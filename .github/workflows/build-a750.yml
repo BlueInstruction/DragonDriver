@@ -44,14 +44,17 @@ jobs:
       - name: Clone Mesa
         run: |
           git clone --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git mesa
-          cd mesa
-          git rev-parse --short HEAD > ../MESA_COMMIT
 
-      - name: Apply shader cache patch
+      - name: Apply shader cache change (inline)
         run: |
           set -e
           cd mesa
-          git apply ../0006-shader-cache-expand.patch
+
+          FILE="src/util/disk_cache.c"
+
+          sed -i \
+            's/return env ? strtoull(env, NULL, 10) : (uint64_t)1 << 30;/if (env \&\& env[0] != '\''\\0'\'') {\n      return strtoull(env, NULL, 10);\n   }\n\n   return (uint64_t)2 << 30;/' \
+            "$FILE"
 
       - name: Create Android cross file
         run: |
@@ -97,7 +100,6 @@ jobs:
 
       - name: Package driver
         run: |
-          set -e
           cp meta/meta-a750.json out/meta.json
           cd out
           zip -9 turnip-adreno-a750.zip vulkan.ad07xx.so meta.json
