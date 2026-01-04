@@ -1,33 +1,44 @@
-From 8c2a4e9c0b3d1a4c2f6e8b7a9d12f3456789abcd Mon Sep 17 00:00:00 2001
+From 1a2b3c4d5e6f7890abcdef1234567890abcdef12 Mon Sep 17 00:00:00 2001
 From: MesaTurnipDriver <dev@mesa.local>
-Date: Sun, 4 Jan 2026 18:00:00 +0000
-Subject: [PATCH] util/disk_cache: increase default shader cache size on Android
+Date: Sun, 4 Jan 2026 21:30:00 +0000
+Subject: [PATCH] util/disk_cache: raise Android default shader cache to 2GB
 
-Increase default shader cache size to 2GB on Android when
+Increase default shader cache size on Android devices when
 MESA_SHADER_CACHE_MAX_SIZE is not explicitly set.
 
+This improves performance on high-RAM devices running heavy
+Vulkan workloads such as DX12 via VKD3D-Proton.
+
 ---
- src/util/disk_cache.c | 8 +++++++-
- 1 file changed, 7 insertions(+), 1 deletion(-)
+ src/util/disk_cache.c | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
 
 diff --git a/src/util/disk_cache.c b/src/util/disk_cache.c
-index 1f2a3b4c5d6..7a8b9c0d1e2 100644
+index 00000000000..11111111111 100644
 --- a/src/util/disk_cache.c
 +++ b/src/util/disk_cache.c
-@@ -84,7 +84,13 @@ static uint64_t
+@@ -70,6 +70,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+
++#ifdef ANDROID
+ static uint64_t
  disk_cache_get_max_size(void)
  {
+@@ -77,9 +78,14 @@ disk_cache_get_max_size(void)
     const char *env = getenv("MESA_SHADER_CACHE_MAX_SIZE");
--   uint64_t max_size = env ? strtoull(env, NULL, 10) : (uint64_t)1 << 30;
-+   uint64_t max_size;
-+
-+   if (env && env[0] != '\0') {
-+      max_size = strtoull(env, NULL, 10);
-+   } else {
-+      max_size = (uint64_t)2 << 30;
-+   }
 
-    return max_size;
+    if (env && env[0] != '\0')
+-      return strtoull(env, NULL, 10);
++      return strtoull(env, NULL, 10);
++
++   return (uint64_t)2 << 30;
++}
++#else
++static uint64_t
++disk_cache_get_max_size(void)
++{
++   const char *env = getenv("MESA_SHADER_CACHE_MAX_SIZE");
++   return env ? strtoull(env, NULL, 10) : (uint64_t)1 << 30;
  }
---
-2.43.0
++#endif
