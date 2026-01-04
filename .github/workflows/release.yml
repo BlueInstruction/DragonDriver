@@ -1,4 +1,4 @@
-name: Turnip Driver (YML Only)
+name: Turnip Driver
 
 on:
   workflow_dispatch:
@@ -63,7 +63,7 @@ jobs:
           cd mesa
           echo "MESA_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: Apply inline patches (Winlator-style)
+      - name: Apply inline patches
         run: |
           cd mesa
 
@@ -75,7 +75,7 @@ jobs:
           curl -L -o mem.patch https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/30000.diff || true
           git apply mem.patch || true
 
-      - name: Configure Mesa (Winlator-like)
+      - name: Configure Mesa
         run: |
           cd mesa
           meson setup build-android \
@@ -104,7 +104,7 @@ jobs:
           cat > meta.json << EOF
           {
             "schemaVersion": 1,
-            "name": "Mesa Turnip (YML Only)",
+            "name": "Mesa Turnip",
             "vendor": "Mesa",
             "driver": "turnip",
             "minApi": 27,
@@ -114,11 +114,11 @@ jobs:
 
       - name: Package
         run: |
-          zip -9 turnip-yml-only.zip vulkan.ad07xx.so meta.json
+          zip -9 turnip-driver.zip vulkan.ad07xx.so meta.json
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: yml-${{ env.MESA_COMMIT }}
-          name: Turnip YML Only
-          files: turnip-yml-only.zip
+          name: Turnip Driver 
+          files: turnip-driver.zip
