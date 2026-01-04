@@ -1,34 +1,20 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Sea Nasr <dev@mesa.local>
-Date: Sun, 4 Jan 2026 22:00:00 +0000
-Subject: [PATCH] util/disk_cache: raise default Android shader cache size
-
-Increase the default shader cache size on Android to 2GB
-when MESA_SHADER_CACHE_MAX_SIZE is not explicitly set.
-This benefits modern Vulkan/DX12 workloads on high-RAM devices.
-
----
- src/util/disk_cache.c | 10 ++++++++--
- 1 file changed, 8 insertions(+), 2 deletions(-)
-
 diff --git a/src/util/disk_cache.c b/src/util/disk_cache.c
-index 0000000..0000000 100644
+index 00000000000..11111111111 100644
 --- a/src/util/disk_cache.c
 +++ b/src/util/disk_cache.c
-@@ -80,8 +80,14 @@ disk_cache_get_max_size(void)
+@@ -1,3 +1,4 @@
++#include <stdint.h>
+ #include <stdlib.h>
+
+ static uint64_t
+@@ -80,7 +81,12 @@ disk_cache_get_max_size(void)
  {
-    const char *env = getenv("MESA_SHADER_CACHE_MAX_SIZE");
-
--   if (env)
--      return strtoull(env, NULL, 10);
-+   if (env && env[0] != '\0')
-+      return strtoull(env, NULL, 10);
-
-+#ifdef ANDROID
-+   return (uint64_t)2 << 30;
-+#else
-    return (uint64_t)1 << 30;
-+#endif
+     const char *env = getenv("MESA_SHADER_CACHE_MAX_SIZE");
+-    return env ? strtoull(env, NULL, 10) : (uint64_t)1 << 30;
++
++    if (env && env[0] != '\0') {
++        return strtoull(env, NULL, 10);
++    }
++
++    return (uint64_t)2 << 30;
  }
---
-2.43.0
