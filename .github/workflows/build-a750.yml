@@ -45,10 +45,11 @@ jobs:
         run: |
           git clone --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git mesa
 
-      - name: Apply A750 shader cache patch
+      - name: Apply shader cache patch
         run: |
+          set -e
           cd mesa
-          git apply ../patches/a750/0006-shader-cache-expand.patch
+          git apply ../0006-shader-cache-expand.patch
 
       - name: Create Android cross file
         run: |
@@ -68,6 +69,7 @@ jobs:
 
       - name: Build Turnip driver
         run: |
+          set -e
           cd mesa
 
           meson setup build-android \
@@ -93,6 +95,7 @@ jobs:
 
       - name: Package driver
         run: |
+          set -e
           cp meta/meta-a750.json out/meta.json
           cd out
           zip -9 turnip-adreno-a750.zip vulkan.ad07xx.so meta.json
