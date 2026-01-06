@@ -1,14 +1,7 @@
-diff --git a/src/util/disk_cache.c b/src/util/disk_cache.c
-index 3b2c5e0d4b6..9a1f6c4e2d1 100644
---- a/src/util/disk_cache.c
-+++ b/src/util/disk_cache.c
-@@ -90,7 +90,13 @@ disk_cache_get_max_size(void)
- {
-    const char *env = getenv("MESA_SHADER_CACHE_MAX_SIZE");
--   return env ? strtoull(env, NULL, 10) : (uint64_t)1 << 30;
-+   if (env && env[0] != '\0') {
-+      return strtoull(env, NULL, 10);
-+   }
-+
-+   return (uint64_t)2 << 30;
- }
+--- a/src/freedreno/vulkan/tu_device.c
++++ b/src/freedreno/vulkan/tu_device.c
+@@ -100,6 +100,10 @@
+     // Example patch: enable experimental perf flags for Adreno 7xx
++    if (device->gpu_id >= 750) {
++        tu_enable_perf_boost(device);
++    }
