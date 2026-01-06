@@ -17,27 +17,37 @@ git clone --depth 1 --branch "$MESA_VERSION" "$MESA_URL" mesa
 
 echo ">>> [3/6] Applying Secret Recipe via Direct Injection..."
 cd mesa
-TARGET_FILE="src/freedreno/vulkan/tu_device.c"
 
-# Direct injection: Find the line after instance->api_version and insert the optimizations
-# This bypasses git apply corruption issues.
+# DYNAMIC FILE DISCOVERY
+# This finds exactly where tu_device.c is located
+TARGET_FILE=$(find . -name "tu_device.c" | grep "vulkan" | head -n 1)
+
+if [ -z "$TARGET_FILE" ]; then
+    echo "CRITICAL ERROR: tu_device.c not found in cloned mesa directory."
+    exit 1
+fi
+
+echo "Found target file at: $TARGET_FILE"
+
+# Injection using sed with a simpler append to avoid escape character issues
+# We look for the api_version line and append our optimizations after it.
 sed -i '/instance->api_version = TU_API_VERSION;/a \
 \
-   if (!getenv("FD_DEV_FEATURES")) {\
-       setenv("FD_DEV_FEATURES", "enable_tp_ubwc_flag_hint=1", 1);\
-   }\
-   if (!getenv("MESA_SHADER_CACHE_MAX_SIZE")) {\
-       setenv("MESA_SHADER_CACHE_MAX_SIZE", "1024M", 1);\
-   }\
-   if (!getenv("TU_DEBUG")) {\
-       setenv("TU_DEBUG", "force_unaligned_device_local", 1);\
-   }' "$TARGET_FILE"
+   setenv("FD_DEV_FEATURES", "enable_tp_ubwc_flag_hint=1", 1);\
+   setenv("MESA_SHADER_CACHE_MAX_SIZE", "1024M", 1);\
+   setenv("TU_DEBUG", "force_unaligned_device_local", 1);' "$TARGET_FILE"
 
-echo "Injection successful into $TARGET_FILE"
+echo "Injection successful. Verifying changes:"
+grep -C 5 "setenv" "$TARGET_FILE"
 cd ..
 
 echo ">>> [4/6] Configuring Meson..."
-# Ensure naming consistency: android-aarch64
+# Ensure android-aarch64 is in the ROOT of your repo
+if [ ! -f "android-aarch64" ]; then
+    echo "ERROR: Cross file 'android-aarch64' not found in repository root."
+    exit 1
+fi
+
 cp android-aarch64 mesa/
 cd mesa
 meson setup "$BUILD_DIR" \
@@ -58,14 +68,16 @@ echo ">>> [5/6] Compiling..."
 ninja -C "$BUILD_DIR"
 
 echo ">>> [6/6] Packaging Artifacts..."
-cp "$BUILD_DIR/src/freedreno/vulkan/libvulkan_freedreno.so" ../"$OUTPUT_DIR"/vulkan.ad07xx.so
+# Find the compiled .so file
+DRIVER_LIB=$(find "$BUILD_DIR" -name "libvulkan_freedreno.so" | head -n 1)
+cp "$DRIVER_LIB" ../"$OUTPUT_DIR"/vulkan.ad07xx.so
 
 cd ../"$OUTPUT_DIR"
 cat <<EOF > meta.json
 {
   "name": "Turnip v25.3.3 - Adreno 750 Optimized",
   "version": "25.3.3",
-  "description": "Stable A750 build. UBWC + 1GB Cache + DX12 Optimizations.",
+  "description": "Production A750 build. UBWC + 1GB Cache + Alignment Fixes.",
   "library": "vulkan.ad07xx.so"
 }
 EOF
