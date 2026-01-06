@@ -16,45 +16,34 @@ echo ">>> [2/6] Cloning Mesa ($MESA_VERSION)..."
 git clone --depth 1 --branch "$MESA_VERSION" "$MESA_URL" mesa
 
 echo ">>> [3/6] Generating and Applying Patch..."
-# We create the patch with the standard a/ and b/ prefixes for git compatibility
-cat << 'EOF' > mesa_patch.diff
---- a/src/freedreno/vulkan/tu_device.c
-+++ b/src/freedreno/vulkan/tu_device.c
-@@ -234,6 +234,22 @@
+cd mesa
+TARGET_FILE=$(find src -name "tu_device.c" | head -n 1)
+
+if [ -z "$TARGET_FILE" ]; then
+    echo "ERROR: tu_device.c not found."
+    exit 1
+fi
+
+cat << EOF > ../recipe.patch
+--- a/$TARGET_FILE
++++ b/$TARGET_FILE
+@@ -234,6 +234,18 @@
     instance->physical_device_count = -1;
- 
     instance->api_version = TU_API_VERSION;
 +
 +   // === SECRET RECIPE OPTIMIZATIONS ===
-+   const char *dev_features = getenv("FD_DEV_FEATURES");
-+   if (!dev_features) {
++   if (!getenv("FD_DEV_FEATURES")) {
 +       setenv("FD_DEV_FEATURES", "enable_tp_ubwc_flag_hint=1", 1);
 +   }
-+
-+   const char *cache_size = getenv("MESA_SHADER_CACHE_MAX_SIZE");
-+   if (!cache_size) {
++   if (!getenv("MESA_SHADER_CACHE_MAX_SIZE")) {
 +       setenv("MESA_SHADER_CACHE_MAX_SIZE", "1024M", 1);
 +   }
-+
-+   const char *desc_idx = getenv("TU_DEBUG");
-+   if (!desc_idx) {
++   if (!getenv("TU_DEBUG")) {
 +       setenv("TU_DEBUG", "force_unaligned_device_local", 1);
 +   }
- 
-    if (pCreateInfo->pApplicationInfo) {
-       const VkApplicationInfo *app = pCreateInfo->pApplicationInfo;
 EOF
 
-# Move into the mesa directory to apply
-cd mesa
-if [ -f "src/freedreno/vulkan/tu_device.c" ]; then
-    echo "Found tu_device.c, applying patch..."
-    git apply -p1 --whitespace=fix ../mesa_patch.diff
-else
-    echo "CRITICAL ERROR: Could not find src/freedreno/vulkan/tu_device.c"
-    find . -name "tu_device.c"
-    exit 1
-fi
+git apply -p1 ../recipe.patch
 cd ..
 
 echo ">>> [4/6] Configuring Meson..."
@@ -78,14 +67,15 @@ echo ">>> [5/6] Compiling..."
 ninja -C "$BUILD_DIR"
 
 echo ">>> [6/6] Packaging..."
-cp "$BUILD_DIR/src/freedreno/vulkan/libvulkan_freedreno.so" ../"$OUTPUT_DIR"/vulkan.ad07xx.so
+DRIVER_LIB=$(find "$BUILD_DIR" -name "libvulkan_freedreno.so" | head -n 1)
+cp "$DRIVER_LIB" ../"$OUTPUT_DIR"/vulkan.ad07xx.so
 
 cd ../"$OUTPUT_DIR"
 cat <<EOF > meta.json
 {
   "name": "Turnip v25.3.3 - Adreno 750 Secret Recipe",
   "version": "25.3.3",
-  "description": "Optimized A750. UBWC Hint + 1GB Shader Cache + Aarch64 LTO.",
+  "description": "Optimized A750 build for Winlator/CMOD. Fixes sky bugs and stutter.",
   "library": "vulkan.ad07xx.so"
 }
 EOF
