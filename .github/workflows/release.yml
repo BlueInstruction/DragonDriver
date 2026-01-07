@@ -129,7 +129,7 @@ jobs:
             -Dstrip=true \
             -Db_ndebug=true \
             -Dshader-cache=true \
-            -Dgallium-drivers=disabled \
+            -Dgallium-drivers=freedreno \
             -Dopengl=false \
             -Degl=disabled \
             -Dgles1=disabled \
