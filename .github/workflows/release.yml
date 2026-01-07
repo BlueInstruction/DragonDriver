@@ -117,8 +117,8 @@ jobs:
             -Dgbm=disabled \
             -Dgallium-drivers= \
             -Dzstd=disabled \
-            -Dzlib=disabled \
             -Dshader-cache=disabled \
+            -Dfreedreno-rd=disabled \
             -Dtools=
             
           ninja -C build-android src/freedreno/vulkan/libvulkan_freedreno.so
