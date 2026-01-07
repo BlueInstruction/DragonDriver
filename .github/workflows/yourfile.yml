@@ -89,7 +89,6 @@ jobs:
             -Dopengl=false \
             -Dgallium-rusticl=false \
             -Dmicrosoft-clc=disabled \
-            -Dgallium-opencl=disabled \
             -Dtools=
             
           ninja -C build-android src/freedreno/vulkan/libvulkan_freedreno.so
