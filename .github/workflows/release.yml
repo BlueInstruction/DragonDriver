@@ -1,0 +1,182 @@
+name: Release Turnip Driver (Improved)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mesa_branch:
+        description: 'Mesa branch/tag'
+        required: false
+        default: 'mesa-25.3.3'
+      target_device:
+        description: 'Target Device'
+        required: false
+        default: 'adreno-750'
+        type: choice
+        options: [adreno-730, adreno-740, adreno-750]
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            python3-pip \
+            python3-mako \
+            flex \
+            bison \
+            patchelf \
+            curl \
+            unzip \
+            clang \
+            lld \
+            llvm \
+            cmake \
+            zlib1g-dev
+
+      - name: Build glslang from Source
+        run: |
+          git clone --depth 1 --branch 14.3.0 https://github.com/KhronosGroup/glslang.git
+          cd glslang
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$HOME/glslang_install \
+            -DENABLE_OPT=0
+          cmake --build build -j$(nproc)
+          cmake --install build
+          echo "$HOME/glslang_install/bin" >> $GITHUB_PATH
+
+      - name: Install Meson
+        run: |
+          pip3 install --upgrade pip
+          pip3 install "meson>=1.3"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Setup Android NDK r29
+        run: |
+          curl -L -o ndk.zip https://dl.google.com/android/repository/android-ndk-r29-linux.zip
+          unzip -q ndk.zip
+          echo "NDK_PATH=$PWD/android-ndk-r29" >> $GITHUB_ENV
+
+      - name: Clone Mesa
+        run: |
+          git clone --depth 1 --branch ${{ github.event.inputs.mesa_branch || 'mesa-25.3.3' }} \
+            https://gitlab.freedesktop.org/mesa/mesa.git mesa-source
+
+      - name: Build Turnip
+        run: |
+          cd mesa-source
+
+          meson --version
+          glslangValidator --version
+
+          NDK_SYSROOT="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+
+          mkdir -p $HOME/bin
+          cat > $HOME/bin/pkg-config << 'EOF'
+          #!/usr/bin/env bash
+          exit 1
+          EOF
+          chmod +x $HOME/bin/pkg-config
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+          cat > android_cross.ini << EOF
+          [binaries]
+          c = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang'
+          cpp = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++'
+          ar = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
+          strip = '$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+          ld = 'lld'
+          pkg-config = '$HOME/bin/pkg-config'
+
+          [host_machine]
+          system = 'android'
+          cpu_family = 'aarch64'
+          cpu = 'armv8'
+          endian = 'little'
+
+          [properties]
+          sys_root = '$NDK_SYSROOT'
+
+          [built-in options]
+          c_args = ['-O3']
+          cpp_args = ['-O3']
+          c_link_args = ['-L$NDK_SYSROOT/usr/lib/aarch64-linux-android/33', '-lz']
+          cpp_link_args = ['-L$NDK_SYSROOT/usr/lib/aarch64-linux-android/33', '-lz']
+          pkg_config_path = ''
+          EOF
+
+          meson setup build-android \
+            --cross-file android_cross.ini \
+            -Dplatforms=android \
+            -Dplatform-sdk-version=33 \
+            -Dandroid-stub=true \
+            -Dvulkan-drivers=freedreno \
+            -Dfreedreno-kmds=kgsl \
+            -Dbuildtype=release \
+            -Dstrip=true \
+            -Db_ndebug=true \
+            -Dshader-cache=true \
+            -Dgallium-drivers=disabled \
+            -Dopengl=false \
+            -Degl=disabled \
+            -Dgles1=disabled \
+            -Dgles2=disabled \
+            -Dglx=disabled \
+            -Dgbm=disabled \
+            -Dzstd=disabled \
+            -Dtools=
+
+          ninja -C build-android src/freedreno/vulkan/libvulkan_freedreno.so
+
+      - name: Package Artifact
+        run: |
+          mkdir -p release_assets/turnip
+          DEVICE="${{ github.event.inputs.target_device || 'adreno-750' }}"
+          MESA_BRANCH="${{ github.event.inputs.mesa_branch || 'mesa-25.3.3' }}"
+          VERSION="${MESA_BRANCH#mesa-}"
+
+          cp mesa-source/build-android/src/freedreno/vulkan/libvulkan_freedreno.so \
+            release_assets/turnip/libvulkan_freedreno.so
+
+          cat > release_assets/turnip/meta.json << EOF
+          {
+            "schemaVersion": 1,
+            "name": "Mesa v${VERSION}",
+            "description": "Turnip Vulkan Driver for ${DEVICE}",
+            "author": "Mesa Project",
+            "packageVersion": "${VERSION}",
+            "vendor": "Mesa",
+            "driverVersion": "${VERSION}",
+            "minApi": 30,
+            "libraryName": "libvulkan_freedreno.so"
+          }
+          EOF
+
+          cd release_assets/turnip
+          zip -r ../turnip_mesa-v${VERSION}-${DEVICE}.zip .
+          cd ../..
+
+          echo "RELEASE_TAG=v${VERSION}-${DEVICE}" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --title "Turnip Driver ${RELEASE_TAG}" \
+            --notes "Improved Turnip build from Mesa ${VERSION}" \
+            release_assets/*.zip
