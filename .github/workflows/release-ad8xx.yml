@@ -62,7 +62,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build python3-pip python3-mako \
-            flex bison patchelf curl unzip clang lld llvm cmake pkg-config
+            flex bison patchelf curl unzip clang lld llvm cmake pkg-config \
+            glslang-tools libglvnd-dev
           pip install meson mako
 
       - name: Setup NDK
@@ -92,6 +93,8 @@ jobs:
           ar = ['llvm-ar']
           strip = ['llvm-strip']
           ld = ['lld']
+          pkgconfig = ['pkg-config']
+          cmake = ['false']
           [host_machine]
           system = 'android'
           cpu_family = 'aarch64'
@@ -116,6 +119,7 @@ jobs:
             -Dbuildtype=release \
             -Dstrip=true \
             -Db_lto=true \
+            -Dglvnd=false \
             -Dc_args="-I$SYSROOT/usr/include $PERF_FLAGS -g0 $C_ARGS" \
             -Dcpp_args="-I$SYSROOT/usr/include $PERF_FLAGS -g0 $C_ARGS" \
             -Dc_link_args="-L$SYSROOT/usr/lib/aarch64-linux-android/${{ env.API_LEVEL }} -lz -flto=$LTO_MODE" \
@@ -166,7 +170,7 @@ jobs:
             "schemaVersion": 1,
             "name": "$ARCHIVE_NAME",
             "description": "",
-            "author": "KIMCHI, Mesa",
+            "author": "Mesa",
             "packageVersion": "${{ env.MESA_VERSION }}",
             "vendor": "Mesa",
             "driverVersion": "Vulkan ${{ needs.get-mesa-info.outputs.vulkan_version }}",
