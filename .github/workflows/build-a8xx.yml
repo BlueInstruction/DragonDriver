@@ -98,25 +98,6 @@ jobs:
           git fetch robclark tu/gen8 --depth 1
           git checkout FETCH_HEAD
 
-      - name: Apply Performance Patches
-        run: |
-          cd mesa
-          
-          # 1. Force GMEM mode for better performance
-          if [ -f "src/freedreno/vulkan/tu_device.cc" ]; then
-            sed -i 's/TU_DEBUG_SYSMEM/TU_DEBUG_GMEM/g' src/freedreno/vulkan/tu_device.cc || true
-          fi
-          
-          # 2. Optimize tile size for Gen8
-          find src/freedreno -name "*.c" -o -name "*.cc" -o -name "*.h" | xargs sed -i 's/TILE_ALIGN_W = 32/TILE_ALIGN_W = 64/g' 2>/dev/null || true
-          find src/freedreno -name "*.c" -o -name "*.cc" -o -name "*.h" | xargs sed -i 's/TILE_ALIGN_H = 32/TILE_ALIGN_H = 64/g' 2>/dev/null || true
-          
-          # 3. Increase command stream size for heavy games
-          sed -i 's/#define TU_CS_GROW_SIZE.*/#define TU_CS_GROW_SIZE (64 * 1024)/g' src/freedreno/vulkan/tu_cs.h 2>/dev/null || true
-          sed -i 's/#define TU_CS_GROW_SIZE.*/#define TU_CS_GROW_SIZE (64 * 1024)/g' src/freedreno/vulkan/tu_cs.cc 2>/dev/null || true
-          
-          echo "Performance patches applied"
-
       - name: Configure Meson
         run: |
           cd mesa
@@ -144,11 +125,8 @@ jobs:
           export PKG_CONFIG_PATH="$SPIRV_TOOLS_PATH/lib/pkgconfig:$PKG_CONFIG_PATH"
           SYSROOT="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
           
-          # Aggressive performance flags
-          PERF_FLAGS="-O3 -flto=full -fomit-frame-pointer -funroll-loops -ftree-vectorize -fno-stack-protector -fmerge-all-constants -fno-math-errno -fno-trapping-math -fassociative-math -freciprocal-math -fno-signed-zeros -ffp-contract=fast"
-          
-          # Performance defines
-          PERF_DEFINES="-DNDEBUG -DTU_DEBUG_GMEM=1 -DTU_DISABLE_LRZ=1 -DANDROID_STRICT=0"
+          # Aggressive performance flags (safe ones only)
+          PERF_FLAGS="-O3 -flto=full -fomit-frame-pointer -funroll-loops -ftree-vectorize -fno-stack-protector -fmerge-all-constants -fno-math-errno"
           
           meson setup build --cross-file cross.ini \
             -Dplatforms=android \
@@ -174,8 +152,8 @@ jobs:
             -Dvalgrind=disabled \
             -Dzstd=disabled \
             -Dtools= \
-            -Dc_args="-I$SYSROOT/usr/include -I$SPIRV_TOOLS_PATH/include $PERF_FLAGS -g0 $PERF_DEFINES" \
-            -Dcpp_args="-I$SYSROOT/usr/include -I$SPIRV_TOOLS_PATH/include $PERF_FLAGS -g0 $PERF_DEFINES" \
+            -Dc_args="-I$SYSROOT/usr/include -I$SPIRV_TOOLS_PATH/include $PERF_FLAGS -g0 -DNDEBUG" \
+            -Dcpp_args="-I$SYSROOT/usr/include -I$SPIRV_TOOLS_PATH/include $PERF_FLAGS -g0 -DNDEBUG" \
             -Dc_link_args="-L$SYSROOT/usr/lib/aarch64-linux-android/${{ env.API_LEVEL }} -L$SPIRV_TOOLS_PATH/lib -lz -flto=full -Wl,-O3 -Wl,--gc-sections" \
             -Dcpp_link_args="-L$SYSROOT/usr/lib/aarch64-linux-android/${{ env.API_LEVEL }} -L$SPIRV_TOOLS_PATH/lib -lz -flto=full -Wl,-O3 -Wl,--gc-sections"
 
@@ -213,7 +191,7 @@ jobs:
           {
             "schemaVersion": 1,
             "name": "$ARCHIVE_NAME",
-            "description": "Turnip Adreno 8xx - Performance Build (GMEM + NoLRZ)",
+            "description": "Turnip Adreno 8xx - Performance Build",
             "author": "Mesa/Freedreno",
             "packageVersion": "${{ env.MESA_VERSION }}",
             "vendor": "Mesa",
@@ -223,7 +201,7 @@ jobs:
             "buildCommit": "$COMMIT_SHA",
             "buildDate": "$COMMIT_DATE",
             "tuDebug": "gmem,nolrz",
-            "optimizations": "LTO, GMEM, NoLRZ, Fast-Math, Aggressive-Opts"
+            "optimizations": "LTO, O3, Loop-Unroll, Vectorize"
           }
           EOF
           
@@ -270,6 +248,30 @@ jobs:
             | API Level | ${{ env.API_LEVEL }} |
             | Branch | robclark/tu/gen8 |
             | Build Date | ${{ needs.build-turnip.outputs.build_date }} |
+            
+            ### Performance Optimizations
+            | Optimization | Description |
+            |--------------|-------------|
+            | LTO Full | Link-Time Optimization |
+            | O3 | Maximum compiler optimizations |
+            | Loop Unrolling | Faster loop execution |
+            | Vectorization | SIMD optimizations |
+            | GC Sections | Remove unused code |
+            
+            ### Recommended Settings (Winlator/Emulators)
+            ```
+            TU_DEBUG=gmem,nolrz
+            ```
+            
+            ### For Performance
+            ```
+            TU_DEBUG=gmem,nolrz,nobin
+            ```
+            
+            ### For Stability Issues
+            ```
+            TU_DEBUG=sysmem,nolrz
+            ```
             
           files: |
             dist/*.zip
