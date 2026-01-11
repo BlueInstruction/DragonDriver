@@ -17,22 +17,26 @@ jobs:
       - name: Get VKD3D-Proton Info
         id: info
         run: |
-          git clone --depth 1 https://github.com/HansKristian-Work/vkd3d-proton.git
+          LATEST_TAG=$(curl -s https://api.github.com/repos/HansKristian-Work/vkd3d-proton/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+          
+          git clone --depth 1 --branch "$LATEST_TAG" https://github.com/HansKristian-Work/vkd3d-proton.git
           cd vkd3d-proton
           
-          VERSION=$(cat VERSION 2>/dev/null || echo "3.0")
+          VERSION=$(echo "$LATEST_TAG" | sed 's/^v//')
           SHA=$(git rev-parse --short HEAD)
           DATE=$(git log -1 --format=%cd --date=short)
           
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "sha=$SHA" >> $GITHUB_OUTPUT
           echo "date=$DATE" >> $GITHUB_OUTPUT
+          echo "tag=$LATEST_TAG" >> $GITHUB_OUTPUT
 
   build-vkd3d:
     needs: get-vkd3d-info
     runs-on: ubuntu-24.04
     outputs:
       build_date: ${{ steps.set-date.outputs.build_date }}
+      archive_name: ${{ steps.package.outputs.archive_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,58 +45,47 @@ jobs:
         id: set-date
         run: echo "build_date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
 
-      - name: Enable 32-bit Architecture
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-
-      - name: Install Dependencies
-        run: |
-          sudo apt-get install -y \
-            gcc-mingw-w64 g++-mingw-w64 \
-            mingw-w64-tools \
-            ninja-build glslang-tools \
-            curl unzip zip git ccache \
-            python3-pip
-          
-          pip install meson
-
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+      - name: Build Release
+        uses: Joshua-Ashton/arch-mingw-github-action@v8
         with:
-          key: vkd3d-${{ github.run_id }}
-          max-size: 1G
-
-      - name: Clone VKD3D-Proton
-        run: |
-          git clone --recursive https://github.com/HansKristian-Work/vkd3d-proton.git
-          cd vkd3d-proton
-          echo "VKD3D_VERSION=$(cat VERSION 2>/dev/null || echo '3.0')" >> $GITHUB_ENV
-          echo "VKD3D_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-
-      - name: Build
-        run: |
-          cd vkd3d-proton
-          ./package-release.sh master build --no-package
+          command: |
+            LATEST_TAG=$(curl -s https://api.github.com/repos/HansKristian-Work/vkd3d-proton/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+            
+            git clone --recursive --branch "$LATEST_TAG" https://github.com/HansKristian-Work/vkd3d-proton.git
+            cd vkd3d-proton
+            
+            VERSION=$(echo "$LATEST_TAG" | sed 's/^v//')
+            SHA=$(git rev-parse --short HEAD)
+            
+            ./package-release.sh "$LATEST_TAG" build --no-package
+            
+            echo "VERSION=$VERSION" >> $GITHUB_ENV
+            echo "SHA=$SHA" >> $GITHUB_ENV
+            echo "TAG=$LATEST_TAG" >> $GITHUB_ENV
 
       - name: Package for Winlator
         id: package
         run: |
           cd vkd3d-proton
           
+          LATEST_TAG=$(curl -s https://api.github.com/repos/HansKristian-Work/vkd3d-proton/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+          VERSION=$(echo "$LATEST_TAG" | sed 's/^v//')
+          SHA=$(git rev-parse --short HEAD)
+          
           BUILD_DIR=$(find build -maxdepth 1 -type d -name "vkd3d-proton-*" | head -1)
           
-          mkdir -p winlator_package
+          mkdir -p winlator_package/system32
+          mkdir -p winlator_package/syswow64
           
-          mv "$BUILD_DIR/x64" winlator_package/system32
-          mv "$BUILD_DIR/x86" winlator_package/syswow64
+          cp "$BUILD_DIR/x64/"*.dll winlator_package/system32/
+          cp "$BUILD_DIR/x86/"*.dll winlator_package/syswow64/
           
           VERSION_CODE="$((RANDOM % 3))"
           
           cat > winlator_package/profile.json << EOF
           {
             "type": "VKD3D",
-            "versionName": "${VKD3D_VERSION}-${VKD3D_SHA}",
+            "versionName": "${VERSION}-${SHA}",
             "versionCode": ${VERSION_CODE},
             "description": "vkd3d-proton",
             "files": [
@@ -116,7 +109,7 @@ jobs:
           }
           EOF
           
-          ARCHIVE_NAME="vkd3d-proton-${VKD3D_VERSION}-${VKD3D_SHA}.wcp"
+          ARCHIVE_NAME="vkd3d-proton-${VERSION}-${SHA}.wcp"
           
           cd winlator_package
           zip -9 -r "../../$ARCHIVE_NAME" .
@@ -126,8 +119,9 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vkd3d-proton-${{ github.run_id }}
+          name: vkd3d-proton-${{ needs.get-vkd3d-info.outputs.version }}
           path: "*.wcp"
+          if-no-files-found: error
           retention-days: 5
 
   release:
@@ -137,7 +131,7 @@ jobs:
       - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          name: vkd3d-proton-${{ github.run_id }}
+          name: vkd3d-proton-${{ needs.get-vkd3d-info.outputs.version }}
           path: dist
 
       - name: Generate Checksum
