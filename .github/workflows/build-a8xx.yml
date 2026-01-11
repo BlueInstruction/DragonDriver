@@ -223,11 +223,6 @@ jobs:
             | Branch | robclark/tu/gen8 |
             | Build Date | ${{ needs.build-turnip.outputs.build_date }} |
             
-            ### Supported GPUs
-            - Adreno 825 (Snapdragon 8s Elite)
-            - Adreno 830 (Snapdragon 8 Elite)
-            - Adreno 840 (Snapdragon 8 Elite+)
-            
           files: |
             dist/*.zip
             dist/SHA256SUMS.txt
