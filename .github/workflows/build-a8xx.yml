@@ -55,20 +55,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build python3-pip python3-mako \
             flex bison patchelf curl unzip clang lld llvm cmake pkg-config \
-            glslang-tools libglvnd-dev spirv-tools spirv-headers \
-            libspirv-cross-c-shared-dev
+            glslang-tools libglvnd-dev
           pip install meson mako
-
-      - name: Build SPIRV-Tools from source
-        run: |
-          git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Tools.git
-          cd SPIRV-Tools
-          git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git external/spirv-headers
-          mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local
-          make -j$(nproc)
-          sudo make install
-          sudo ldconfig
 
       - name: Setup NDK
         run: |
@@ -83,6 +71,19 @@ jobs:
           git remote add robclark https://gitlab.freedesktop.org/robclark/mesa.git
           git fetch robclark tu/gen8 --depth 1
           git checkout FETCH_HEAD
+
+      - name: Patch Mesa to disable SPIRV-Tools requirement
+        run: |
+          cd mesa
+          
+          # Disable SPIRV-Tools in meson
+          sed -i "s/dep_spirv_tools = dependency('SPIRV-Tools'/dep_spirv_tools = dependency('SPIRV-Tools-disabled'/" meson.build || true
+          sed -i "s/with_spirv_tools = true/with_spirv_tools = false/" meson.build || true
+          
+          # Create empty stub for vtn_debug if needed
+          if grep -r "spirv-tools/libspirv.h" src/compiler/spirv/; then
+            sed -i 's|#include <spirv-tools/libspirv.h>|// SPIRV-Tools disabled\n#define SPV_SUCCESS 0\ntypedef void* spv_context;\ntypedef void* spv_diagnostic;|g' src/compiler/spirv/vtn_debug.c || true
+          fi
 
       - name: Configure Meson
         run: |
@@ -101,10 +102,13 @@ jobs:
           cpu_family = 'aarch64'
           cpu = 'armv8'
           endian = 'little'
+          [properties]
+          sys_root = '${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot'
+          [built-in options]
+          pkg_config_path = []
           EOF
           
           export PATH="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
-          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
           SYSROOT="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
           
           PERF_FLAGS="-O3 -flto=full -fomit-frame-pointer -funroll-loops -ftree-vectorize -fno-stack-protector"
@@ -134,10 +138,10 @@ jobs:
             -Dvalgrind=disabled \
             -Dzstd=disabled \
             -Dtools= \
-            -Dc_args="-I$SYSROOT/usr/include -I/usr/local/include $PERF_FLAGS -g0 $C_ARGS" \
-            -Dcpp_args="-I$SYSROOT/usr/include -I/usr/local/include $PERF_FLAGS -g0 $C_ARGS" \
-            -Dc_link_args="-L$SYSROOT/usr/lib/aarch64-linux-android/${{ env.API_LEVEL }} -L/usr/local/lib -lz -flto=full" \
-            -Dcpp_link_args="-L$SYSROOT/usr/lib/aarch64-linux-android/${{ env.API_LEVEL }} -L/usr/local/lib -lz -flto=full"
+            -Dc_args="-I$SYSROOT/usr/include $PERF_FLAGS -g0 $C_ARGS" \
+            -Dcpp_args="-I$SYSROOT/usr/include $PERF_FLAGS -g0 $C_ARGS" \
+            -Dc_link_args="-L$SYSROOT/usr/lib/aarch64-linux-android/${{ env.API_LEVEL }} -lz -flto=full" \
+            -Dcpp_link_args="-L$SYSROOT/usr/lib/aarch64-linux-android/${{ env.API_LEVEL }} -lz -flto=full"
 
       - name: Build
         run: |
