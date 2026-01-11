@@ -107,29 +107,18 @@ jobs:
             -Dbuildtype=release \
             -Dstrip=true \
             -Db_lto=true \
-            -Dglvnd=disabled \
             -Dgallium-drivers= \
             -Dllvm=disabled \
-            -Dintel-rt=disabled \
-            -Dvideo-codecs= \
-            -Dgallium-va=disabled \
-            -Dgallium-vdpau=disabled \
-            -Dgallium-xa=disabled \
-            -Dgallium-nine=false \
-            -Dgallium-opencl=disabled \
-            -Dopencl-spirv=false \
-            -Dvulkan-layers= \
-            -Dshader-cache=disabled \
-            -Dopengl=false \
+            -Dglvnd=disabled \
             -Degl=disabled \
             -Dgbm=disabled \
             -Dgles1=disabled \
             -Dgles2=disabled \
+            -Dopengl=false \
             -Dglx=disabled \
             -Dlibunwind=disabled \
             -Dlmsensors=disabled \
             -Dvalgrind=disabled \
-            -Dxlib-lease=disabled \
             -Dzstd=disabled \
             -Dc_args="-I$SYSROOT/usr/include $PERF_FLAGS -g0 $C_ARGS" \
             -Dcpp_args="-I$SYSROOT/usr/include $PERF_FLAGS -g0 $C_ARGS" \
@@ -233,6 +222,11 @@ jobs:
             | TU_DEBUG | `gmem,nolrz` |
             | Branch | robclark/tu/gen8 |
             | Build Date | ${{ needs.build-turnip.outputs.build_date }} |
+            
+            ### Supported GPUs
+            - Adreno 825 (Snapdragon 8s Elite)
+            - Adreno 830 (Snapdragon 8 Elite)
+            - Adreno 840 (Snapdragon 8 Elite+)
             
           files: |
             dist/*.zip
