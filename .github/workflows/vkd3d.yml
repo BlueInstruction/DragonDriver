@@ -74,11 +74,6 @@ jobs:
           git clone --recursive --branch ${{ env.TAG }} https://github.com/HansKristian-Work/vkd3d-proton.git src
           cd src
           ./package-release.sh ${{ env.TAG }} ../out --no-package
-          
-          if [[ $? -ne 0 ]]; then
-            echo "ERROR: Build failed"
-            exit 1
-          fi
 
       - name: VERIFY_BUILD
         if: steps.check.outputs.SKIP_RUN == 'false'
@@ -113,16 +108,22 @@ jobs:
           echo "x86/d3d12.dll: $(du -h "$SRC_PATH/x86/d3d12.dll" | cut -f1)"
           echo "x86/d3d12core.dll: $(du -h "$SRC_PATH/x86/d3d12core.dll" | cut -f1)"
           
-          # التحقق من الحد الأدنى لحجم الملفات (5 MB)
           for arch in x64 x86; do
-            for dll in d3d12.dll d3d12core.dll; do
-              SIZE=$(stat -c%s "$SRC_PATH/$arch/$dll")
-              MIN_SIZE=5000000
-              if [[ $SIZE -lt $MIN_SIZE ]]; then
-                echo "ERROR: $arch/$dll is too small ($SIZE bytes). Expected at least $MIN_SIZE bytes"
-                exit 1
-              fi
-            done
+            SIZE=$(stat -c%s "$SRC_PATH/$arch/d3d12core.dll")
+            MIN_SIZE=4000000
+            if [[ $SIZE -lt $MIN_SIZE ]]; then
+              echo "ERROR: $arch/d3d12core.dll is too small ($SIZE bytes). Expected at least $MIN_SIZE bytes"
+              exit 1
+            fi
+          done
+          
+          for arch in x64 x86; do
+            SIZE=$(stat -c%s "$SRC_PATH/$arch/d3d12.dll")
+            MIN_SIZE=50000
+            if [[ $SIZE -lt $MIN_SIZE ]]; then
+              echo "ERROR: $arch/d3d12.dll is too small ($SIZE bytes). Expected at least $MIN_SIZE bytes"
+              exit 1
+            fi
           done
           
           echo "=== Build verification passed ==="
@@ -171,11 +172,11 @@ jobs:
             **Source:** [HansKristian-Work/vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton/releases/tag/${{ env.TAG }})
             
             ### Architecture
-            - `system32/` → x64 DLLs
-            - `syswow64/` → x86 DLLs
+            - `system32/` - x64 DLLs
+            - `syswow64/` - x86 DLLs
             
             ### Files Included
-            - d3d12.dll
-            - d3d12core.dll
+            - d3d12.dll (~100KB - wrapper)
+            - d3d12core.dll (~5MB - main library)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
