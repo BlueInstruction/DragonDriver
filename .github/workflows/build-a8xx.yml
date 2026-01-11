@@ -76,29 +76,34 @@ jobs:
         run: |
           cd mesa
           
-          # Replace vtn_debug.c with stub version
           cat > src/compiler/spirv/vtn_debug.c << 'STUBEOF'
+          /*
+           * Copyright © 2024 Mesa Authors
+           * SPDX-License-Identifier: MIT
+           * 
+           * Stub implementation - SPIRV-Tools disabled for Android build
+           */
+          
           #include "vtn_private.h"
           #include <stdio.h>
+          #include <stdint.h>
+          #include <stddef.h>
+          
+          typedef void* spv_diagnostic;
+          
+          void vtn_print_spirv(struct vtn_builder *b, FILE *fp, const uint32_t *words,
+                               size_t word_count, spv_diagnostic *diagnostic);
           
           void
           vtn_print_spirv(struct vtn_builder *b, FILE *fp, const uint32_t *words,
                           size_t word_count, spv_diagnostic *diagnostic)
           {
-             fprintf(fp, "SPIRV-Tools not available - SPIRV disassembly disabled\n");
-             fprintf(fp, "SPIRV binary: %zu words\n", word_count);
+             (void)b;
+             (void)diagnostic;
+             fprintf(fp, "SPIRV disassembly disabled (no SPIRV-Tools)\n");
+             fprintf(fp, "Binary: %zu words\n", word_count);
           }
           STUBEOF
-          
-          # Also check if there's a header that needs the type
-          if grep -q "spv_diagnostic" src/compiler/spirv/vtn_private.h; then
-            sed -i 's/typedef struct spv_diagnostic_t\* spv_diagnostic;/typedef void* spv_diagnostic;/g' src/compiler/spirv/vtn_private.h || true
-          fi
-          
-          # Add typedef if not exists
-          if ! grep -q "typedef.*spv_diagnostic" src/compiler/spirv/vtn_private.h; then
-            sed -i '1i typedef void* spv_diagnostic;' src/compiler/spirv/vtn_debug.c
-          fi
 
       - name: Configure Meson
         run: |
