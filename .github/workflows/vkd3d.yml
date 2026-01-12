@@ -31,6 +31,13 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Cache llvm-mingw
+        uses: actions/cache@v4
+        id: cache-llvm
+        with:
+          path: llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64
+          key: llvm-mingw-20241217
+
       - name: SYNC_DEPS
         run: |
           set -e
@@ -40,8 +47,11 @@ jobs:
       - name: Setup llvm-mingw
         run: |
           set -e
-          curl -L -o llvm-mingw.tar.xz "https://github.com/mstorsjo/llvm-mingw/releases/download/20241217/llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz"
-          tar -xf llvm-mingw.tar.xz
+          if [[ ! -d "llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64" ]]; then
+            curl -L -o llvm-mingw.tar.xz "https://github.com/mstorsjo/llvm-mingw/releases/download/20241217/llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz"
+            tar -xf llvm-mingw.tar.xz
+            rm -f llvm-mingw.tar.xz
+          fi
           echo "$PWD/llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64/bin" >> $GITHUB_PATH
 
       - name: FETCH_TAG
@@ -53,7 +63,16 @@ jobs:
             echo "ERROR: Failed to fetch latest tag"
             exit 1
           fi
-          COMMIT_SHORT=$(curl -s "https://api.github.com/repos/HansKristian-Work/vkd3d-proton/git/refs/tags/$LATEST_TAG" | jq -r '.object.sha' | cut -c1-7)
+          
+          REF_DATA=$(curl -s "https://api.github.com/repos/HansKristian-Work/vkd3d-proton/git/refs/tags/$LATEST_TAG")
+          OBJ_TYPE=$(echo "$REF_DATA" | jq -r '.object.type')
+          OBJ_SHA=$(echo "$REF_DATA" | jq -r '.object.sha')
+          
+          if [[ "$OBJ_TYPE" == "tag" ]]; then
+            OBJ_SHA=$(curl -s "https://api.github.com/repos/HansKristian-Work/vkd3d-proton/git/tags/$OBJ_SHA" | jq -r '.object.sha')
+          fi
+          COMMIT_SHORT="${OBJ_SHA:0:7}"
+          
           echo "TAG=$LATEST_TAG" >> $GITHUB_ENV
           echo "VER=${LATEST_TAG#v}" >> $GITHUB_ENV
           echo "COMMIT=$COMMIT_SHORT" >> $GITHUB_ENV
@@ -65,7 +84,7 @@ jobs:
         run: |
           set -e
           EXISTS=$(gh release view "build-${{ env.VER }}" --repo ${{ github.repository }} > /dev/null 2>&1 && echo "true" || echo "false")
-          if [[ "${{ github.event.inputs.FORCE_MODE }}" == "true" ]]; then EXISTS="false"; fi
+          if [[ "${{ inputs.FORCE_MODE }}" == "true" ]]; then EXISTS="false"; fi
           echo "SKIP_RUN=$EXISTS" >> $GITHUB_OUTPUT
 
       - name: COMPILE_SRC
@@ -113,7 +132,7 @@ jobs:
             SIZE=$(stat -c%s "$SRC_PATH/$arch/d3d12core.dll")
             MIN_SIZE=4000000
             if [[ $SIZE -lt $MIN_SIZE ]]; then
-              echo "ERROR: $arch/d3d12core.dll is too small ($SIZE bytes). Expected at least $MIN_SIZE bytes"
+              echo "ERROR: $arch/d3d12core.dll is too small ($SIZE bytes)"
               exit 1
             fi
           done
@@ -122,7 +141,7 @@ jobs:
             SIZE=$(stat -c%s "$SRC_PATH/$arch/d3d12.dll")
             MIN_SIZE=50000
             if [[ $SIZE -lt $MIN_SIZE ]]; then
-              echo "ERROR: $arch/d3d12.dll is too small ($SIZE bytes). Expected at least $MIN_SIZE bytes"
+              echo "ERROR: $arch/d3d12.dll is too small ($SIZE bytes)"
               exit 1
             fi
           done
@@ -142,13 +161,13 @@ jobs:
           {
             "type": "VKD3D",
             "versionName": "${{ env.VER }}",
-            "versionCode": $(date +%s),
-            "description": "VKD3D-Proton ${{ env.VER }}",
+            "versionCode": 0,
+            "description": "VKD3D-Proton ${{ env.VER }} (Upstream: Hans-Kristian Arntzen)",
             "files": [
-              {"source": "system32/d3d12.dll", "target": "\${system32}/d3d12.dll"},
-              {"source": "system32/d3d12core.dll", "target": "\${system32}/d3d12core.dll"},
-              {"source": "syswow64/d3d12.dll", "target": "\${syswow64}/d3d12.dll"},
-              {"source": "syswow64/d3d12core.dll", "target": "\${syswow64}/d3d12core.dll"}
+              {"source": "system32/d3d12.dll", "target": "\${system32}"},
+              {"source": "system32/d3d12core.dll", "target": "\${system32}"},
+              {"source": "syswow64/d3d12.dll", "target": "\${syswow64}"},
+              {"source": "syswow64/d3d12core.dll", "target": "\${syswow64}"}
             ]
           }
           EOF
@@ -157,8 +176,8 @@ jobs:
         if: steps.check.outputs.SKIP_RUN == 'false'
         run: |
           set -e
-          cd staging && zip -r "../vkd3d-proton-${{ env.VER }}-${{ env.COMMIT }}.wcp" ./*
-          echo "WCP_FILE=vkd3d-proton-${{ env.VER }}-${{ env.COMMIT }}.wcp" >> $GITHUB_ENV
+          cd staging && zip -r "../vkd3d-proton-${{ env.VER }}.wcp" ./*
+          echo "WCP_FILE=vkd3d-proton-${{ env.VER }}.wcp" >> $GITHUB_ENV
 
       - name: DEPLOY_RELEASE
         if: steps.check.outputs.SKIP_RUN == 'false'
@@ -170,6 +189,5 @@ jobs:
           body: |
             ## VKD3D-Proton ${{ env.VER }}
             
-            **Commit:** `${{ env.COMMIT }}`
-            **Source:** [HansKristian-Work/vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton/releases/tag/${{ env.TAG }})
-            
+            - **Commit:** `${{ env.COMMIT }}`
+            - **Source:** [HansKristian-Work/vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton/releases/tag/${{ env.TAG }})
