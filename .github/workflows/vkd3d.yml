@@ -131,7 +131,7 @@ jobs:
           
           for arch in x64 x86; do
             SIZE=$(stat -c%s "$SRC_PATH/$arch/d3d12core.dll")
-            if [[ $SIZE -lt 4000000 ]]; then
+            if [[ $SIZE -lt 5000000 ]]; then
               echo "ERROR: $arch/d3d12core.dll is too small ($SIZE bytes)"
               exit 1
             fi
