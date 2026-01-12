@@ -1,0 +1,15 @@
+*.so
+*.zip
+*.o
+*.a
+build/
+out/
+release/
+dist/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+__pycache__/
+*.pyc
+*.log
