@@ -1,4 +1,4 @@
-name: Build Turnip (Adreno 750)
+name: Build Turnip - (a7xx)
 
 on:
   workflow_dispatch:
@@ -201,8 +201,10 @@ jobs:
           {
             "schemaVersion": 1,
             "name": "$ARCHIVE_NAME",
-            "description": "Turnip Vulkan Driver for Adreno 7xx",
-            "packageVersion": "$MESA_VER",
+            "description": "Mesa Turnip Driver",
+            "packageVersion": "1",
+            "vendor": "Mesa"
+            "driverVersion": "$MESA_VER",
             "minApi": ${{ env.API_LEVEL }},
             "libraryName": "vulkan.ad07xx.so"
           }
