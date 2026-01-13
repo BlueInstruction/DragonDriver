@@ -321,7 +321,7 @@ jobs:
             -Dlibunwind=disabled \
             -Dlmsensors=disabled \
             -Dvalgrind=disabled \
-            -Dzstd=enabled \
+            -Dzstd=disabled \
             -Drelocatable=true \
             -Dtools= \
             -Dfreedreno-virtio=false \
