@@ -63,7 +63,7 @@ jobs:
       - name: Release Dragon
         uses: softprops/action-gh-release@v2
         with:
-          name: "🐉 Dragon Build ${{ steps.info.outputs.date }}"
+          name: "Dragon Build ${{ steps.info.outputs.date }}"
           tag_name: ${{ steps.info.outputs.tag }}
           body: |
             ## Dragon Forge Build
