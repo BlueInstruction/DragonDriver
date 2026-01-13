@@ -147,7 +147,7 @@ setup_mesa_repo() {
     DRAGON_VER=$(cat VERSION 2>/dev/null || echo "unknown")
 }
 
-# === SPELLS (PATCHES) ===
+# === SPELLS ===
 apply_spell_file() {
     local spell_path="$1"
     local full_path="$SPELLS_DIR/$spell_path.patch"
@@ -202,7 +202,7 @@ spell_tiger_velocity() {
         return 0
     fi
     
-    # Apply spell
+    # Apply spells
     if grep -q "use_sysmem_rendering" "$file"; then
         sed -i '/^use_sysmem_rendering/,/^{/{/^{/a\   // Dragon: Tiger Velocity\n   return true;
         }' "$file" 2>/dev/null || \
@@ -270,7 +270,7 @@ cpp = ['ccache', '$NDK_BIN/aarch64-linux-android${LEVEL}-clang++', '-fno-excepti
 c_ld = 'lld'
 cpp_ld = 'lld'
 strip = '$NDK_BIN/llvm-strip'
-pkg-config = '/usr/bin/pkg-config'
+pkg-config = '/bin/false'
 [host_machine]
 system = 'android'
 cpu_family = 'aarch64'
