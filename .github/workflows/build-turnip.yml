@@ -322,7 +322,6 @@ jobs:
             -Dlmsensors=disabled \
             -Dvalgrind=disabled \
             -Dzstd=disabled \
-            -Drelocatable=true \
             -Dtools= \
             -Dfreedreno-virtio=false \
             -Dimagination-srv=false \
