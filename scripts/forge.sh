@@ -136,8 +136,8 @@ forge_dragon() {
     cat <<EOF > "$CROSS_FILE"
 [binaries]
 ar = '$NDK_BIN/llvm-ar'
-c = ['ccache', '$NDK_BIN/aarch64-linux-android${LEVEL}-clang']
-cpp = ['ccache', '$NDK_BIN/aarch64-linux-android${LEVEL}-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++']
+c = ['ccache', '$NDK_BIN/aarch64-linux-android${LEVEL}-clang', '-Wno-error', '-Wno-array-bounds']
+cpp = ['ccache', '$NDK_BIN/aarch64-linux-android${LEVEL}-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++', '-Wno-error', '-Wno-array-bounds']
 c_ld = 'lld'
 cpp_ld = 'lld'
 strip = '$NDK_BIN/llvm-strip'
