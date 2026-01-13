@@ -1,7 +1,5 @@
 # 🐉 Dragon Forge
 
-Private custom builds for mobile graphics acceleration.
-
 ## Variants
 
 | Variant | Code | Description |
