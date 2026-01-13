@@ -259,7 +259,9 @@ forge_dragon() {
 create_cross_file() {
     local NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
     local CROSS_FILE="$CHAMBER/cross_dragon"
+    local NATIVE_FILE="$CHAMBER/native_dragon"
     
+    # Cross file (existing code)
     cat <<EOF > "$CROSS_FILE"
 [binaries]
 ar = '$NDK_BIN/llvm-ar'
@@ -276,11 +278,17 @@ cpu = 'armv8'
 endian = 'little'
 [built-in options]
 c_args = ['-w', '-Wno-error']
-cpp_args = ['-w', '-Wno-error']  
+cpp_args = ['-w', '-Wno-error']
+EOF
 
+    # Native file for host build tools
+    cat <<EOF > "$NATIVE_FILE"
+[binaries]
+c = ['ccache', 'clang']
+cpp = ['ccache', 'clang++']
 EOF
     
-    info "Cross-compilation file created"
+    info "Cross-compilation files created"
 }
 
 run_meson_setup() {
@@ -292,6 +300,7 @@ run_meson_setup() {
     
     if ! meson setup build-dragon \
         --cross-file "$CHAMBER/cross_dragon" \
+        --native-file "$CHAMBER/native_dragon" \
         -Dbuildtype=release \
         -Dplatforms=android \
         -Dplatform-sdk-version=$LEVEL \
