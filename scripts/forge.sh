@@ -265,8 +265,8 @@ create_cross_file() {
     cat <<EOF > "$CROSS_FILE"
 [binaries]
 ar = '$NDK_BIN/llvm-ar'
-c = ['ccache', '$NDK_BIN/aarch64-linux-android${LEVEL}-clang', '-Wno-error', '-Wno-array-bounds', '-Wno-c99-designator', '-Wno-typedef-redefinition']
-cpp = ['ccache', '$NDK_BIN/aarch64-linux-android${LEVEL}-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++', '-Wno-error', '-Wno-array-bounds', '-Wno-c++11-narrowing', '-Wno-vla-cxx-extension', '-Wno-c99-designator', '-Wno-typedef-redefinition']
+c = ['ccache', '$NDK_BIN/aarch64-linux-android${LEVEL}-clang', '-Wno-error', '-Wno-array-bounds', '-Wno-c99-designator', '-Wno-typedef-redefinition', '-Wno-unused-function', '-Wno-gnu-alignof-expression']
+cpp = ['ccache', '$NDK_BIN/aarch64-linux-android${LEVEL}-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++', '-Wno-error', '-Wno-array-bounds', '-Wno-c++11-narrowing', '-Wno-vla-cxx-extension', '-Wno-c99-designator', '-Wno-typedef-redefinition', '-Wno-unused-function', '-Wno-gnu-alignof-expression', '-Wno-vla-extension']
 c_ld = 'lld'
 cpp_ld = 'lld'
 strip = '$NDK_BIN/llvm-strip'
