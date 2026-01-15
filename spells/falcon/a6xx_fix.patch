@@ -1,0 +1,5 @@
+diff --git a/src/freedreno/vulkan/tu_device.cc b/src/freedreno/vulkan/tu_device.cc
+@@
+ if (device->gpu_id < 700) {
+     physical_device->has_cached_coherent_memory = false;
+ }
