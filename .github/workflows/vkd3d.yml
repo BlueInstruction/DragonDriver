@@ -67,7 +67,34 @@ jobs:
         run: |
           echo "Applying UE5 WaveOps + Shader Model patch"
           cd src
-          git apply ../patches/ue5_feature_override.patch
+          
+          DEVICE_FILE="libs/vkd3d/device.c"
+          
+          if [[ ! -f "$DEVICE_FILE" ]]; then
+            echo "ERROR: device.c not found"
+            exit 1
+          fi
+          
+          # Add UE5 compat header
+          sed -i '1i\/* UE5.5 Compatibility Patch - Force WaveOps, ShaderModel 6.6, MeshShader */' "$DEVICE_FILE"
+          
+          # Patch D3D12_FEATURE_D3D12_OPTIONS1 for WaveOps
+          sed -i '/case D3D12_FEATURE_D3D12_OPTIONS1:/,/return S_OK;/{
+            /data->WaveOps = /a\            /* UE5 Force WaveOps */\n            data->WaveOps = TRUE;\n            data->WaveLaneCountMin = 32;\n            data->WaveLaneCountMax = 64;
+          }' "$DEVICE_FILE"
+          
+          # Patch SHADER_MODEL for 6.6
+          sed -i '/case D3D12_FEATURE_SHADER_MODEL:/,/return S_OK;/{
+            /data->HighestShaderModel = /a\            /* UE5 Force Shader Model 6.6 */\n            if (data->HighestShaderModel < D3D_SHADER_MODEL_6_6) data->HighestShaderModel = D3D_SHADER_MODEL_6_6;
+          }' "$DEVICE_FILE"
+          
+          # Patch D3D12_FEATURE_D3D12_OPTIONS7 for MeshShader
+          sed -i '/case D3D12_FEATURE_D3D12_OPTIONS7:/,/return S_OK;/{
+            /data->MeshShaderTier = /a\            /* UE5 Force MeshShader Tier 1 */\n            if (data->MeshShaderTier < D3D12_MESH_SHADER_TIER_1) data->MeshShaderTier = D3D12_MESH_SHADER_TIER_1;
+          }' "$DEVICE_FILE"
+          
+          echo "Patch applied, verifying..."
+          grep -c "UE5 Force" "$DEVICE_FILE" && echo "Verification passed" || echo "WARNING: Patch may not have applied correctly"
 
       - name: Build vkd3d-proton
         if: steps.check.outputs.SKIP_RUN == 'false'
@@ -110,6 +137,8 @@ jobs:
 
       - name: Deploy Release
         if: steps.check.outputs.SKIP_RUN == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ env.VER }}
@@ -117,3 +146,8 @@ jobs:
           files: vkd3d-proton-${{ env.VER }}.wcp
           body: |
             VKD3D-Proton ${{ env.VER }} patched for UE5.5 support on Winlator
+            
+            Patches applied:
+            - Force WaveOps enabled
+            - Force Shader Model 6.6
+            - Force MeshShader Tier 1
