@@ -35,7 +35,22 @@ jobs:
       - name: Setup Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git meson ninja-build curl jq python3-venv glslang-tools zstd llvm
+          sudo apt-get install -y \
+            git \
+            meson \
+            ninja-build \
+            curl \
+            jq \
+            python3-venv \
+            glslang-tools \
+            zstd \
+            llvm \
+            gcc-mingw-w64-x86-64 \
+            gcc-mingw-w64-i686 \
+            g++-mingw-w64-x86-64 \
+            g++-mingw-w64-i686 \
+            mingw-w64 \
+            mingw-w64-tools
 
       - name: Fetch Latest Tag
         id: fetch_tag
@@ -75,20 +90,16 @@ jobs:
             exit 1
           fi
           
-          # Add UE5 compat header
           sed -i '1i\/* UE5.5 Compatibility Patch - Force WaveOps, ShaderModel 6.6, MeshShader */' "$DEVICE_FILE"
           
-          # Patch D3D12_FEATURE_D3D12_OPTIONS1 for WaveOps
           sed -i '/case D3D12_FEATURE_D3D12_OPTIONS1:/,/return S_OK;/{
             /data->WaveOps = /a\            /* UE5 Force WaveOps */\n            data->WaveOps = TRUE;\n            data->WaveLaneCountMin = 32;\n            data->WaveLaneCountMax = 64;
           }' "$DEVICE_FILE"
           
-          # Patch SHADER_MODEL for 6.6
           sed -i '/case D3D12_FEATURE_SHADER_MODEL:/,/return S_OK;/{
             /data->HighestShaderModel = /a\            /* UE5 Force Shader Model 6.6 */\n            if (data->HighestShaderModel < D3D_SHADER_MODEL_6_6) data->HighestShaderModel = D3D_SHADER_MODEL_6_6;
           }' "$DEVICE_FILE"
           
-          # Patch D3D12_FEATURE_D3D12_OPTIONS7 for MeshShader
           sed -i '/case D3D12_FEATURE_D3D12_OPTIONS7:/,/return S_OK;/{
             /data->MeshShaderTier = /a\            /* UE5 Force MeshShader Tier 1 */\n            if (data->MeshShaderTier < D3D12_MESH_SHADER_TIER_1) data->MeshShaderTier = D3D12_MESH_SHADER_TIER_1;
           }' "$DEVICE_FILE"
