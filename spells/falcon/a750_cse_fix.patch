@@ -1,14 +1,13 @@
-diff --git a/src/freedreno/ir3/ir3_cse.c b/src/freedreno/ir3/ir3_cse.c
-index 1234567..89abcde 100644
---- a/src/freedreno/ir3/ir3_cse.c
-+++ b/src/freedreno/ir3/ir3_cse.c
+diff --git a/src/freedreno/ir3/ir3_cse_a750.c b/src/freedreno/ir3/ir3_cse_a750.c
+new file mode 100644
+index 0000000..5555555
+--- /dev/null
++++ b/src/freedreno/ir3/ir3_cse_a750.c
 @@
 +/*
 + * A750-specific adjustments for IR3 CSE
-+ *
-+ * 1. Enable MOV and META_COLLECT CSE across array registers safely
-+ * 2. Handle SSA defs properly to avoid GPU hangchecks on large workloads
-+ * 3. Reduce intra-block set allocations by reusing hash set
++ * - Enable MOV and META_COLLECT CSE safely
++ * - Handle SSA defs to avoid hangchecks
 + */
 +
 +static bool
@@ -17,8 +16,8 @@ index 1234567..89abcde 100644
 +    if (instr->opc != OPC_META_COLLECT && instr->opc != OPC_MOV)
 +        return false;
 +
-+    // Allow array dsts for A750, but only if SSA
-+    if ((instr->dsts[0]->flags & IR3_REG_ARRAY) && !(instr->dsts[0]->flags & IR3_REG_SSA))
++    if ((instr->dsts[0]->flags & IR3_REG_ARRAY) &&
++        !(instr->dsts[0]->flags & IR3_REG_SSA))
 +        return false;
 +
 +    if (!is_dest_gpr(instr->dsts[0]))
@@ -27,8 +26,7 @@ index 1234567..89abcde 100644
 +    return true;
 +}
 +
-+bool
-+ir3_cse_a750(struct ir3 *ir)
++bool ir3_cse_a750(struct ir3 *ir)
 +{
 +    struct set *instr_set = _mesa_set_create(NULL, hash_instr, cmp_func);
 +    foreach_block (block, &ir->block_list) {
@@ -36,7 +34,6 @@ index 1234567..89abcde 100644
 +
 +        foreach_instr (instr, &block->instr_list) {
 +            instr->data = NULL;
-+
 +            if (!instr_can_cse_a750(instr))
 +                continue;
 +
@@ -65,6 +62,3 @@ index 1234567..89abcde 100644
 +    _mesa_set_destroy(instr_set, NULL);
 +    return progress;
 +}
-+
--- 
-2.42.0
