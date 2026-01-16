@@ -100,41 +100,10 @@ jobs:
           echo "COMMIT=$COMMIT_SHORT" >> $GITHUB_ENV
           echo "Commit: $COMMIT_SHORT"
 
-      - name: Analyze Source Code
+      - name: Analyze and Apply UE5 Patch
         if: steps.check.outputs.SKIP_RUN == 'false'
         run: |
-          cd src
-          DEVICE_FILE="libs/vkd3d/device.c"
-          
-          echo "=== Analyzing device.c structure ==="
-          echo ""
-          echo "Looking for D3D12_FEATURE cases..."
-          grep -n "case D3D12_FEATURE_D3D12_OPTIONS1:" "$DEVICE_FILE" || echo "OPTIONS1 not found"
-          grep -n "case D3D12_FEATURE_SHADER_MODEL:" "$DEVICE_FILE" || echo "SHADER_MODEL not found"
-          grep -n "case D3D12_FEATURE_D3D12_OPTIONS7:" "$DEVICE_FILE" || echo "OPTIONS7 not found"
-          
-          echo ""
-          echo "Looking for data assignments..."
-          grep -n "data->WaveOps" "$DEVICE_FILE" || echo "WaveOps not found"
-          grep -n "data->HighestShaderModel" "$DEVICE_FILE" || echo "HighestShaderModel not found"
-          grep -n "data->MeshShaderTier" "$DEVICE_FILE" || echo "MeshShaderTier not found"
-          
-          echo ""
-          echo "=== OPTIONS1 section ==="
-          grep -A30 "case D3D12_FEATURE_D3D12_OPTIONS1:" "$DEVICE_FILE" | head -35
-          
-          echo ""
-          echo "=== SHADER_MODEL section ==="
-          grep -A15 "case D3D12_FEATURE_SHADER_MODEL:" "$DEVICE_FILE" | head -20
-          
-          echo ""
-          echo "=== OPTIONS7 section ==="
-          grep -A15 "case D3D12_FEATURE_D3D12_OPTIONS7:" "$DEVICE_FILE" | head -20
-
-      - name: Apply UE5 Patch
-        if: steps.check.outputs.SKIP_RUN == 'false'
-        run: |
-          echo "Applying UE5 WaveOps + Shader Model patch..."
+          echo "Analyzing and patching vkd3d-proton..."
           cd src
           
           DEVICE_FILE="libs/vkd3d/device.c"
@@ -142,74 +111,150 @@ jobs:
           # Backup
           cp "$DEVICE_FILE" "$DEVICE_FILE.orig"
           
+          echo "=== Full Analysis ==="
+          echo ""
+          echo "--- Searching for WaveOps ---"
+          grep -n "WaveOps" "$DEVICE_FILE" | head -20
+          echo ""
+          echo "--- Searching for wave_ops ---"
+          grep -n "wave_ops" "$DEVICE_FILE" | head -20
+          echo ""
+          echo "--- Searching for MeshShader ---"
+          grep -n -i "meshshader" "$DEVICE_FILE" | head -20
+          echo ""
+          echo "--- Searching for mesh_shader ---"
+          grep -n -i "mesh_shader" "$DEVICE_FILE" | head -20
+          echo ""
+          echo "--- OPTIONS1 full section ---"
+          grep -A50 "case D3D12_FEATURE_D3D12_OPTIONS1:" "$DEVICE_FILE" | head -55
+          echo ""
+          echo "--- OPTIONS7 full section ---"
+          grep -A30 "case D3D12_FEATURE_D3D12_OPTIONS7:" "$DEVICE_FILE" | head -35
+          echo ""
+          
           # Add header
           sed -i '1i\/* UE5.5 Compatibility Patch - Force WaveOps, ShaderModel 6.6, MeshShader */' "$DEVICE_FILE"
           
-          # Use Python for reliable patching
+          # Use Python for patching with actual patterns
           python3 << 'PYTHON_SCRIPT'
           import re
           
           with open("libs/vkd3d/device.c", "r") as f:
               content = f.read()
           
+          original = content
           patches_applied = 0
           
-          # Patch 1: WaveOps in OPTIONS1
-          # Find: data->WaveOps = ... and add override after
-          pattern1 = r'(data->WaveOps = [^;]+;)'
-          replacement1 = r'''\1
+          # Find actual patterns in the file
+          print("=== Pattern Detection ===")
+          
+          # Check what patterns exist
+          if "data->WaveOps" in content:
+              print("Found: data->WaveOps")
+          if "wave_ops" in content:
+              print("Found: wave_ops")
+          if "WaveLaneCountMin" in content:
+              print("Found: WaveLaneCountMin")
+          if "data->MeshShaderTier" in content:
+              print("Found: data->MeshShaderTier")
+          if "mesh_shader" in content.lower():
+              print("Found: mesh_shader (case insensitive)")
+          
+          print("")
+          print("=== Applying Patches ===")
+          
+          # Patch 1: WaveOps - try multiple patterns
+          waveops_patterns = [
+              (r'(data->WaveOps\s*=\s*[^;]+;)', 'data->WaveOps'),
+              (r'(options1->WaveOps\s*=\s*[^;]+;)', 'options1->WaveOps'),
+              (r'(d3d12_caps\.options1\.WaveOps)', 'd3d12_caps WaveOps'),
+          ]
+          
+          for pattern, name in waveops_patterns:
+              match = re.search(pattern, content)
+              if match:
+                  print(f"WaveOps match found: {name}")
+                  print(f"  Context: {match.group(0)[:80]}...")
+                  break
+          
+          # Try to find OPTIONS1 section and patch after return S_OK
+          options1_match = re.search(
+              r'(case D3D12_FEATURE_D3D12_OPTIONS1:.*?)(return S_OK;)',
+              content,
+              re.DOTALL
+          )
+          if options1_match:
+              print("Found OPTIONS1 section")
+              section = options1_match.group(1)
+              # Find the last assignment before return
+              assignments = re.findall(r'data->\w+\s*=\s*[^;]+;', section)
+              if assignments:
+                  last_assign = assignments[-1]
+                  print(f"Last assignment in OPTIONS1: {last_assign[:60]}...")
+                  
+                  waveops_patch = '''
                       /* UE5 Force WaveOps */
                       data->WaveOps = TRUE;
                       data->WaveLaneCountMin = 32;
-                      data->WaveLaneCountMax = 64;'''
-          
-          if re.search(pattern1, content):
-              content = re.sub(pattern1, replacement1, content, count=1)
-              patches_applied += 1
-              print("Patch 1 applied: WaveOps")
+                      data->WaveLaneCountMax = 64;
+                      '''
+                  
+                  content = content.replace(
+                      last_assign,
+                      last_assign + waveops_patch,
+                      1
+                  )
+                  patches_applied += 1
+                  print("Patch 1 applied: WaveOps")
           else:
-              print("Patch 1 FAILED: WaveOps pattern not found")
+              print("Patch 1 FAILED: OPTIONS1 section not found")
           
           # Patch 2: ShaderModel
-          # Find: data->HighestShaderModel = ... and add override after
-          pattern2 = r'(data->HighestShaderModel = [^;]+;)(\s*\n\s*return S_OK;)'
-          replacement2 = r'''\1
-                      /* UE5 Force Shader Model 6.6 */
-                      if (data->HighestShaderModel < D3D_SHADER_MODEL_6_6)
-                          data->HighestShaderModel = D3D_SHADER_MODEL_6_6;\2'''
-          
-          if re.search(pattern2, content):
-              content = re.sub(pattern2, replacement2, content, count=1)
-              patches_applied += 1
-              print("Patch 2 applied: ShaderModel")
-          else:
-              # Try alternative pattern
-              pattern2_alt = r'(data->HighestShaderModel = [^;]+;)'
-              replacement2_alt = r'''\1
+          shader_match = re.search(r'(data->HighestShaderModel\s*=\s*[^;]+;)', content)
+          if shader_match:
+              shader_patch = '''
                       /* UE5 Force Shader Model 6.6 */
                       if (data->HighestShaderModel < D3D_SHADER_MODEL_6_6)
                           data->HighestShaderModel = D3D_SHADER_MODEL_6_6;'''
-              if re.search(pattern2_alt, content):
-                  content = re.sub(pattern2_alt, replacement2_alt, content, count=1)
-                  patches_applied += 1
-                  print("Patch 2 applied: ShaderModel (alt)")
-              else:
-                  print("Patch 2 FAILED: ShaderModel pattern not found")
-          
-          # Patch 3: MeshShader in OPTIONS7
-          # Find: data->MeshShaderTier = ... and add override after
-          pattern3 = r'(data->MeshShaderTier = [^;]+;)'
-          replacement3 = r'''\1
-                      /* UE5 Force MeshShader Tier 1 */
-                      if (data->MeshShaderTier < D3D12_MESH_SHADER_TIER_1)
-                          data->MeshShaderTier = D3D12_MESH_SHADER_TIER_1;'''
-          
-          if re.search(pattern3, content):
-              content = re.sub(pattern3, replacement3, content, count=1)
+              
+              content = content.replace(
+                  shader_match.group(1),
+                  shader_match.group(1) + shader_patch,
+                  1
+              )
               patches_applied += 1
-              print("Patch 3 applied: MeshShader")
+              print("Patch 2 applied: ShaderModel")
           else:
-              print("Patch 3 FAILED: MeshShader pattern not found")
+              print("Patch 2 FAILED: ShaderModel pattern not found")
+          
+          # Patch 3: MeshShader - try multiple patterns
+          options7_match = re.search(
+              r'(case D3D12_FEATURE_D3D12_OPTIONS7:.*?)(return S_OK;)',
+              content,
+              re.DOTALL
+          )
+          if options7_match:
+              print("Found OPTIONS7 section")
+              section = options7_match.group(1)
+              assignments = re.findall(r'data->\w+\s*=\s*[^;]+;', section)
+              if assignments:
+                  last_assign = assignments[-1]
+                  print(f"Last assignment in OPTIONS7: {last_assign[:60]}...")
+                  
+                  mesh_patch = '''
+                      /* UE5 Force MeshShader Tier 1 */
+                      data->MeshShaderTier = D3D12_MESH_SHADER_TIER_1;
+                      '''
+                  
+                  content = content.replace(
+                      last_assign,
+                      last_assign + mesh_patch,
+                      1
+                  )
+                  patches_applied += 1
+                  print("Patch 3 applied: MeshShader")
+          else:
+              print("Patch 3 FAILED: OPTIONS7 section not found")
           
           with open("libs/vkd3d/device.c", "w") as f:
               f.write(content)
@@ -219,19 +264,13 @@ jobs:
           
           # Verify
           echo ""
-          echo "=== Verification ==="
+          echo "=== Final Verification ==="
           PATCH_COUNT=$(grep -c "UE5 Force" "$DEVICE_FILE" || echo "0")
           echo "Patch markers found: $PATCH_COUNT"
           
           echo ""
-          echo "=== Patched sections ==="
-          grep -B1 -A3 "UE5 Force" "$DEVICE_FILE" || echo "No patches found"
-          
-          if [[ "$PATCH_COUNT" -lt 3 ]]; then
-            echo ""
-            echo "WARNING: Not all patches applied. Showing diff:"
-            diff "$DEVICE_FILE.orig" "$DEVICE_FILE" | head -100 || true
-          fi
+          echo "=== All Patched Sections ==="
+          grep -B2 -A4 "UE5 Force" "$DEVICE_FILE" || echo "No patches found"
 
       - name: Build vkd3d-proton
         if: steps.check.outputs.SKIP_RUN == 'false'
