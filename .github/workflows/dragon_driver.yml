@@ -13,11 +13,19 @@ on:
           - falcon
           - shadow
           - hawk
+          - dragon-ue5
           - all
       custom_commit:
         description: "Custom Mesa commit (optional)"
         required: false
         default: ""
+      mesa_source:
+        type: choice
+        description: "Mesa source repository"
+        default: "freedesktop"
+        options:
+          - freedesktop
+          - whitebelyash
   schedule:
     - cron: "0 6 1,15 * *"
 
@@ -31,44 +39,82 @@ env:
 jobs:
   build_driver:
     runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 120
 
-      - name: Prepare Chamber
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Prepare Build Environment
         run: |
           sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
           sudo apt update
-          sudo apt install -y libssl-dev libzstd-dev libarchive-dev python3-mako python3-pip flex bison ccache patchelf
+          sudo apt install -y \
+            libssl-dev \
+            libzstd-dev \
+            libarchive-dev \
+            python3-mako \
+            python3-pip \
+            flex \
+            bison \
+            ccache \
+            patchelf \
+            glslang-tools \
+            libdrm-dev \
+            libwayland-dev \
+            libx11-xcb-dev \
+            libxrandr-dev \
+            libxext-dev
           sudo apt build-dep mesa -y
-          pip install --break-system-packages meson mako
+          pip install --break-system-packages meson mako PyYAML
 
-      - name: Summon Dragon
+      - name: Build Dragon Driver
         run: |
           chmod +x scripts/driver.sh
-          bash scripts/driver.sh ${{ github.event.inputs.variant || 'tiger' }} "${{ github.event.inputs.custom_commit }}"
+          export MESA_SOURCE="${{ github.event.inputs.mesa_source || 'freedesktop' }}"
+          bash scripts/driver.sh "${{ github.event.inputs.variant || 'tiger' }}" "${{ github.event.inputs.custom_commit }}"
 
-      - name: Gather Artifacts
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dragon-${{ github.event.inputs.variant || 'tiger' }}-${{ github.run_number }}
           path: driver_chamber/*.zip
           retention-days: 30
 
-      - name: Prepare Release
+      - name: Prepare Release Info
         id: info
         run: |
           echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
           echo "tag=Dragon-$(date +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
+          if [ -f driver_chamber/version.txt ]; then
+            echo "mesa_ver=$(cat driver_chamber/version.txt)" >> $GITHUB_OUTPUT
+          else
+            echo "mesa_ver=unknown" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Release Dragon
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Dragon Build ${{ steps.info.outputs.date }}"
+          name: "Dragon Driver ${{ steps.info.outputs.date }}"
           tag_name: ${{ steps.info.outputs.tag }}
           body: |
             ## Dragon Driver Build
-            - Variant: `${{ github.event.inputs.variant || 'tiger' }}`
-            - Date: ${{ steps.info.outputs.date }}
+            
+            **Variant:** `${{ github.event.inputs.variant || 'tiger' }}`
+            **Mesa Version:** ${{ steps.info.outputs.mesa_ver }}
+            **Date:** ${{ steps.info.outputs.date }}
+            **Source:** ${{ github.event.inputs.mesa_source || 'freedesktop' }}
+            
+            ### Variants Description
+            - `tiger` - Stable base build
+            - `tiger-phoenix` - Enhanced performance
+            - `falcon` - Adreno 6xx/7xx optimized
+            - `shadow` - Experimental features
+            - `hawk` - Full power mode
+            - `dragon-ue5` - UE5/DX12 heavy games (Hell is Us, Alan Wake 2)
+            
+            ### Usage
+            Install the .zip file in your Turnip-compatible launcher.
           files: driver_chamber/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
