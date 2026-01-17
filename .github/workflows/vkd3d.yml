@@ -12,6 +12,15 @@ on:
         description: "Specific version to build (leave empty for latest)"
         required: false
         default: ""
+      SHADER_MODEL:
+        type: choice
+        description: "Shader Model version"
+        default: "6_6"
+        options:
+          - "6_5"
+          - "6_6"
+          - "6_7"
+          - "6_8"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -72,18 +81,24 @@ jobs:
             exit 1
           fi
           
+          SHADER_MODEL="${{ inputs.SHADER_MODEL || '6_6' }}"
+          
           echo "TAG=$LATEST_TAG" >> $GITHUB_ENV
           echo "VER=${LATEST_TAG#v}" >> $GITHUB_ENV
+          echo "SHADER_MODEL=$SHADER_MODEL" >> $GITHUB_ENV
           echo "Detected version: $LATEST_TAG"
+          echo "Shader Model: $SHADER_MODEL"
 
       - name: Check Release Existence
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          EXISTS=$(gh release view "build-${{ env.VER }}" --repo ${{ github.repository }} > /dev/null 2>&1 && echo "true" || echo "false")
+          RELEASE_TAG="vkd3d-${{ env.VER }}-sm${{ env.SHADER_MODEL }}"
+          EXISTS=$(gh release view "$RELEASE_TAG" --repo ${{ github.repository }} > /dev/null 2>&1 && echo "true" || echo "false")
           if [[ "${{ inputs.FORCE_MODE }}" == "true" ]]; then EXISTS="false"; fi
           echo "SKIP_RUN=$EXISTS" >> $GITHUB_OUTPUT
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_ENV
           echo "Release exists: $EXISTS"
 
       - name: Clone Source
@@ -100,61 +115,60 @@ jobs:
           echo "COMMIT=$COMMIT_SHORT" >> $GITHUB_ENV
           echo "Commit: $COMMIT_SHORT"
 
-      - name: Apply UE5 Patch
+      - name: Apply UE5 Patches
         if: steps.check.outputs.SKIP_RUN == 'false'
         run: |
           echo "Applying UE5 patches..."
           cd src
           
           DEVICE_FILE="libs/vkd3d/device.c"
+          SHADER_MODEL="${{ env.SHADER_MODEL }}"
           
           # Backup
           cp "$DEVICE_FILE" "$DEVICE_FILE.orig"
           
           # Add header
-          sed -i '1i\/* UE5.5 Compatibility Patch - Force WaveOps, ShaderModel 6.6, MeshShader */' "$DEVICE_FILE"
+          sed -i '1i\/* UE5.5 Compatibility Patch - Dragon Driver Project */' "$DEVICE_FILE"
           
           # Use Python for reliable patching
-          python3 << 'PYTHON_SCRIPT'
+          python3 << PYTHON_SCRIPT
           import re
           
           with open("libs/vkd3d/device.c", "r") as f:
               content = f.read()
           
           patches_applied = 0
+          shader_model = "${SHADER_MODEL}"
           
-          print("=== Applying Patches ===")
+          print("=== Applying UE5 Patches ===")
+          print(f"Target Shader Model: {shader_model}")
+          print("")
           
-          # Patch 1: WaveOps - patch where options1->WaveOps is set
-          # Line 8831: options1->WaveOps = device->d3d12_caps.max_shader_model >= D3D_SHADER_MODEL_6_0;
+          # Patch 1: WaveOps
           waveops_pattern = r'(options1->WaveOps\s*=\s*[^;]+;)'
           waveops_match = re.search(waveops_pattern, content)
           if waveops_match:
-              waveops_patch = '''options1->WaveOps = TRUE; /* UE5 Force WaveOps */
+              waveops_patch = '''options1->WaveOps = TRUE; /* Dragon: Force WaveOps */
               options1->WaveLaneCountMin = 32;
               options1->WaveLaneCountMax = 64;'''
               content = content.replace(waveops_match.group(1), waveops_patch, 1)
               patches_applied += 1
-              print("Patch 1 applied: WaveOps (options1)")
+              print("[OK] Patch 1: WaveOps enabled")
           else:
-              print("Patch 1 FAILED: WaveOps pattern not found")
+              print("[FAIL] Patch 1: WaveOps pattern not found")
           
           # Patch 2: ShaderModel
           shader_pattern = r'(data->HighestShaderModel\s*=\s*[^;]+;)'
           shader_match = re.search(shader_pattern, content)
           if shader_match:
-              shader_patch = shader_match.group(1) + '''
-                      /* UE5 Force Shader Model 6.6 */
-                      if (data->HighestShaderModel < D3D_SHADER_MODEL_6_6)
-                          data->HighestShaderModel = D3D_SHADER_MODEL_6_6;'''
+              shader_patch = f'''data->HighestShaderModel = D3D_SHADER_MODEL_{shader_model}; /* Dragon: Force SM {shader_model.replace('_', '.')} */'''
               content = content.replace(shader_match.group(1), shader_patch, 1)
               patches_applied += 1
-              print("Patch 2 applied: ShaderModel")
+              print(f"[OK] Patch 2: Shader Model {shader_model.replace('_', '.')}")
           else:
-              print("Patch 2 FAILED: ShaderModel pattern not found")
+              print("[FAIL] Patch 2: ShaderModel pattern not found")
           
-          # Patch 3: MeshShader - find where MeshShaderTier is set in d3d12_caps
-          # Look for mesh_shader_tier or MeshShaderTier assignment
+          # Patch 3: MeshShader
           mesh_patterns = [
               r'(options7->MeshShaderTier\s*=\s*[^;]+;)',
               r'(caps->options7\.MeshShaderTier\s*=\s*[^;]+;)',
@@ -165,48 +179,116 @@ jobs:
           for pattern in mesh_patterns:
               mesh_match = re.search(pattern, content)
               if mesh_match:
-                  mesh_patch = mesh_match.group(1) + '''
-              /* UE5 Force MeshShader Tier 1 */
-              options7->MeshShaderTier = D3D12_MESH_SHADER_TIER_1;'''
+                  mesh_patch = 'options7->MeshShaderTier = D3D12_MESH_SHADER_TIER_1; /* Dragon: Force MeshShader */'
                   content = content.replace(mesh_match.group(1), mesh_patch, 1)
                   patches_applied += 1
                   mesh_applied = True
-                  print(f"Patch 3 applied: MeshShader ({pattern[:30]}...)")
+                  print("[OK] Patch 3: MeshShader Tier 1")
                   break
           
           if not mesh_applied:
-              # Try to find OPTIONS7 case and add patch there
               options7_pattern = r'(case D3D12_FEATURE_D3D12_OPTIONS7:.*?)(return S_OK;)'
               options7_match = re.search(options7_pattern, content, re.DOTALL)
               if options7_match:
-                  mesh_patch = '''/* UE5 Force MeshShader Tier 1 */
+                  mesh_patch = '''/* Dragon: Force MeshShader Tier 1 */
                       data->MeshShaderTier = D3D12_MESH_SHADER_TIER_1;
                       '''
                   new_section = options7_match.group(1) + mesh_patch + options7_match.group(2)
                   content = content.replace(options7_match.group(0), new_section, 1)
                   patches_applied += 1
-                  print("Patch 3 applied: MeshShader (OPTIONS7 section)")
+                  print("[OK] Patch 3: MeshShader Tier 1 (OPTIONS7)")
               else:
-                  print("Patch 3 FAILED: MeshShader pattern not found")
+                  print("[FAIL] Patch 3: MeshShader pattern not found")
+          
+          # Patch 4: Enhanced Barriers
+          barriers_patterns = [
+              r'(options12->EnhancedBarriersSupported\s*=\s*[^;]+;)',
+              r'(d3d12_caps\.options12\.EnhancedBarriersSupported\s*=\s*[^;]+;)',
+          ]
+          
+          barriers_applied = False
+          for pattern in barriers_patterns:
+              barriers_match = re.search(pattern, content)
+              if barriers_match:
+                  content = content.replace(barriers_match.group(1), 
+                      'options12->EnhancedBarriersSupported = TRUE; /* Dragon: Force Enhanced Barriers */', 1)
+                  patches_applied += 1
+                  barriers_applied = True
+                  print("[OK] Patch 4: Enhanced Barriers")
+                  break
+          
+          if not barriers_applied:
+              options12_pattern = r'(case D3D12_FEATURE_D3D12_OPTIONS12:.*?)(return S_OK;)'
+              options12_match = re.search(options12_pattern, content, re.DOTALL)
+              if options12_match:
+                  barriers_patch = '''/* Dragon: Force Enhanced Barriers */
+                      data->EnhancedBarriersSupported = TRUE;
+                      '''
+                  new_section = options12_match.group(1) + barriers_patch + options12_match.group(2)
+                  content = content.replace(options12_match.group(0), new_section, 1)
+                  patches_applied += 1
+                  print("[OK] Patch 4: Enhanced Barriers (OPTIONS12)")
+              else:
+                  print("[SKIP] Patch 4: Enhanced Barriers not found (may not exist in this version)")
+          
+          # Patch 5: Resource Binding Tier
+          binding_patterns = [
+              r'(options->ResourceBindingTier\s*=\s*[^;]+;)',
+              r'(d3d12_caps\.options\.ResourceBindingTier\s*=\s*[^;]+;)',
+          ]
+          
+          binding_applied = False
+          for pattern in binding_patterns:
+              binding_match = re.search(pattern, content)
+              if binding_match:
+                  content = content.replace(binding_match.group(1),
+                      'options->ResourceBindingTier = D3D12_RESOURCE_BINDING_TIER_3; /* Dragon: Force Tier 3 */', 1)
+                  patches_applied += 1
+                  binding_applied = True
+                  print("[OK] Patch 5: Resource Binding Tier 3")
+                  break
+          
+          if not binding_applied:
+              print("[SKIP] Patch 5: Resource Binding pattern not found")
+          
+          # Patch 6: Tiled Resources Tier
+          tiled_pattern = r'(options->TiledResourcesTier\s*=\s*[^;]+;)'
+          tiled_match = re.search(tiled_pattern, content)
+          if tiled_match:
+              content = content.replace(tiled_match.group(1),
+                  'options->TiledResourcesTier = D3D12_TILED_RESOURCES_TIER_3; /* Dragon: Force Tiled Tier 3 */', 1)
+              patches_applied += 1
+              print("[OK] Patch 6: Tiled Resources Tier 3")
+          else:
+              print("[SKIP] Patch 6: Tiled Resources pattern not found")
+          
+          # Patch 7: Conservative Rasterization
+          conservative_pattern = r'(options->ConservativeRasterizationTier\s*=\s*[^;]+;)'
+          conservative_match = re.search(conservative_pattern, content)
+          if conservative_match:
+              content = content.replace(conservative_match.group(1),
+                  'options->ConservativeRasterizationTier = D3D12_CONSERVATIVE_RASTERIZATION_TIER_3; /* Dragon: Force Conservative Raster */', 1)
+              patches_applied += 1
+              print("[OK] Patch 7: Conservative Rasterization Tier 3")
+          else:
+              print("[SKIP] Patch 7: Conservative Rasterization pattern not found")
           
           with open("libs/vkd3d/device.c", "w") as f:
               f.write(content)
           
-          print(f"\nTotal patches applied: {patches_applied}/3")
+          print("")
+          print(f"=== Total patches applied: {patches_applied} ===")
           
           if patches_applied < 3:
-              print("\nWARNING: Not all patches applied!")
+              print("WARNING: Core patches may have failed!")
+              exit(1)
           PYTHON_SCRIPT
           
           # Verify
           echo ""
           echo "=== Final Verification ==="
-          PATCH_COUNT=$(grep -c "UE5 Force" "$DEVICE_FILE" || echo "0")
-          echo "Patch markers found: $PATCH_COUNT"
-          
-          echo ""
-          echo "=== Patched Sections ==="
-          grep -B1 -A3 "UE5 Force" "$DEVICE_FILE" || echo "No patches found"
+          PATCH_COUNT=$(grep -c "Dragon:" "$DEVICE_FILE" || echo "0")
+          echo "Dragon patch markers found: $PATCH_COUNT"
 
       - name: Build vkd3d-proton
         if: steps.check.outputs.SKIP_RUN == 'false'
@@ -243,12 +325,15 @@ jobs:
           cp "$SRC_PATH/x64/"*.dll staging/system32/
           cp "$SRC_PATH/x86/"*.dll staging/syswow64/
           
+          SM_DISPLAY="${{ env.SHADER_MODEL }}"
+          SM_DISPLAY="${SM_DISPLAY//_/.}"
+          
           cat > staging/profile.json << EOF
           {
             "type": "VKD3D",
-            "versionName": "${{ env.VER }}-${{ env.COMMIT }}",
+            "versionName": "${{ env.VER }}-SM${SM_DISPLAY}-Dragon",
             "versionCode": 0,
-            "description": "VKD3D-Proton ${{ env.VER }} UE5 Patch - Force WaveOps, ShaderModel 6.6, MeshShader",
+            "description": "VKD3D-Proton ${{ env.VER }} - Dragon UE5 Patch - SM ${SM_DISPLAY}",
             "files": [
               {
                 "source": "system32/d3d12.dll",
@@ -270,10 +355,21 @@ jobs:
           }
           EOF
           
-          cd staging
-          tar --zstd --format=gnu -cf "../vkd3d-proton-${{ env.VER }}.wcp" profile.json system32 syswow64
+          PACKAGE_NAME="vkd3d-proton-${{ env.VER }}-SM${{ env.SHADER_MODEL }}-Dragon"
           
-          echo "Package created: vkd3d-proton-${{ env.VER }}.wcp"
+          cd staging
+          tar --zstd --format=gnu -cf "../${PACKAGE_NAME}.wcp" profile.json system32 syswow64
+          
+          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "Package created: ${PACKAGE_NAME}.wcp"
+
+      - name: Upload Artifact
+        if: steps.check.outputs.SKIP_RUN == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: ${{ env.PACKAGE_NAME }}.wcp
+          retention-days: 30
 
       - name: Deploy Release
         if: steps.check.outputs.SKIP_RUN == 'false'
@@ -281,15 +377,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ env.VER }}
-          name: VKD3D-Proton ${{ env.VER }} (UE5 Patch)
-          files: vkd3d-proton-${{ env.VER }}.wcp
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: VKD3D-Proton ${{ env.VER }} (SM ${{ env.SHADER_MODEL }} Dragon)
+          files: ${{ env.PACKAGE_NAME }}.wcp
           body: |
-            VKD3D-Proton ${{ env.VER }} patched for UE5.5 support on Winlator
+            ## VKD3D-Proton ${{ env.VER }} - Dragon UE5 Patch
             
-            Commit: ${{ env.COMMIT }}
+            **Shader Model:** ${{ env.SHADER_MODEL }}
             
-            Patches applied:
-            - Force WaveOps enabled
-            - Force Shader Model 6.6
-            - Force MeshShader Tier 1
+            ### Patches Applied
+            - WaveOps (32-64 lanes)
+            - Shader Model ${{ env.SHADER_MODEL }}
+            - MeshShader Tier 1
+            - Enhanced Barriers
+            - Resource Binding Tier 3
+            - Tiled Resources Tier 3
+            - Conservative Rasterization Tier 3
+            
