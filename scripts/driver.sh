@@ -621,11 +621,11 @@ build_dragon_ue5() {
 
     # Skip file-based spells that may conflict with current Mesa version
     # These need to be updated for each Mesa version
-    apply_spell_file "dx12/device_caps_override"
-    apply_spell_file "dx12/wave_ops_force"
-    apply_spell_file "dx12/mesh_shader_relax"
-    apply_spell_file "dx12/enhanced_barriers_relax"
-    apply_spell_file "dx12/ue5_resource_aliasing"
+    # apply_spell_file "dx12/device_caps_override"
+    # apply_spell_file "dx12/wave_ops_force"
+    # apply_spell_file "dx12/mesh_shader_relax"
+    # apply_spell_file "dx12/enhanced_barriers_relax"
+    # apply_spell_file "dx12/ue5_resource_aliasing"
 
     driver_dragon "Dragon-UE5"
 }
