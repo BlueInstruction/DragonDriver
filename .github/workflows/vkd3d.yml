@@ -35,7 +35,7 @@ defaults:
     shell: 'bash --noprofile --norc -Eeuo pipefail {0}'
 
 jobs:
-  build_ue5_patch:
+  start_build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -331,9 +331,9 @@ jobs:
           cat > staging/profile.json << EOF
           {
             "type": "VKD3D",
-            "versionName": "${{ env.VER }}-SM${SM_DISPLAY}-Dragon",
+            "versionName": "${{ env.VER }}-Dragon",
             "versionCode": 0,
-            "description": "VKD3D-Proton ${{ env.VER }} - Dragon UE5 Patch - SM ${SM_DISPLAY}",
+            "description": "VKD3D-Proton ${{ env.VER }}",
             "files": [
               {
                 "source": "system32/d3d12.dll",
@@ -381,9 +381,8 @@ jobs:
           name: VKD3D-Proton ${{ env.VER }} (SM ${{ env.SHADER_MODEL }} Dragon)
           files: ${{ env.PACKAGE_NAME }}.wcp
           body: |
-            ## VKD3D-Proton ${{ env.VER }} - Dragon UE5 Patch
+            ## VKD3D-Proton ${{ env.VER }} - Dragon
             
-            **Shader Model:** ${{ env.SHADER_MODEL }}
             
             ### Patches Applied
             - WaveOps (32-64 lanes)
