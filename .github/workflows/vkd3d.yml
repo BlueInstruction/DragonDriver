@@ -1,1 +1,194 @@
+name: VKD3D-Proton
 
+on:
+  schedule:
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      FORCE_MODE:
+        type: boolean
+        default: false
+      VERSION:
+        description: "Version"
+        required: false
+        default: ""
+      SHADER_MODEL:
+        type: choice
+        default: "6_6"
+        options: ["6_5", "6_6", "6_7", "6_8"]
+      FEATURE_LEVEL:
+        type: choice
+        default: "12_2"
+        options: ["12_0", "12_1", "12_2"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: write
+
+defaults:
+  run:
+    shell: 'bash --noprofile --norc -Eeuo pipefail {0}'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y git meson ninja-build curl jq python3 glslang-tools spirv-tools zstd gcc-mingw-w64-x86-64 gcc-mingw-w64-i686 g++-mingw-w64-x86-64 g++-mingw-w64-i686 mingw-w64 mingw-w64-tools
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix 2>/dev/null || true
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix 2>/dev/null || true
+          sudo update-alternatives --set i686-w64-mingw32-gcc /usr/bin/i686-w64-mingw32-gcc-posix 2>/dev/null || true
+          sudo update-alternatives --set i686-w64-mingw32-g++ /usr/bin/i686-w64-mingw32-g++-posix 2>/dev/null || true
+
+      - name: Fetch Version
+        run: |
+          if [[ -n "${{ inputs.VERSION }}" ]]; then
+            VER="${{ inputs.VERSION }}"
+            [[ "$VER" =~ ^v ]] || VER="v$VER"
+          else
+            VER=$(curl -sL https://api.github.com/repos/HansKristian-Work/vkd3d-proton/releases/latest | jq -r '.tag_name // empty')
+            [[ -z "$VER" ]] && VER=$(curl -sL https://api.github.com/repos/HansKristian-Work/vkd3d-proton/releases | jq -r '.[0].tag_name')
+          fi
+          echo "TAG=$VER" >> $GITHUB_ENV
+          echo "VER=${VER#v}" >> $GITHUB_ENV
+          echo "SHADER_MODEL=${{ inputs.SHADER_MODEL || '6_6' }}" >> $GITHUB_ENV
+          echo "FEATURE_LEVEL=${{ inputs.FEATURE_LEVEL || '12_2' }}" >> $GITHUB_ENV
+
+      - name: Check Release
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_TAG="vkd3d-${{ env.VER }}-sm${{ env.SHADER_MODEL }}-fl${{ env.FEATURE_LEVEL }}"
+          EXISTS=$(gh release view "$RELEASE_TAG" --repo ${{ github.repository }} 2>/dev/null && echo "true" || echo "false")
+          [[ "${{ inputs.FORCE_MODE }}" == "true" ]] && EXISTS="false"
+          echo "SKIP=$EXISTS" >> $GITHUB_OUTPUT
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_ENV
+
+      - name: Clone
+        if: steps.check.outputs.SKIP == 'false'
+        run: |
+          git clone --recursive --branch ${{ env.TAG }} https://github.com/HansKristian-Work/vkd3d-proton.git src
+          cd src && chmod +x ./package-release.sh
+          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Patch
+        if: steps.check.outputs.SKIP == 'false'
+        run: |
+          cd src
+          cat > patch.py << 'PY'
+          import re, os, glob
+
+          sm = os.environ.get("SHADER_MODEL", "6_6")
+          fl = os.environ.get("FEATURE_LEVEL", "12_2")
+          fl_map = {"12_0": "D3D_FEATURE_LEVEL_12_0", "12_1": "D3D_FEATURE_LEVEL_12_1", "12_2": "D3D_FEATURE_LEVEL_12_2"}
+          applied = 0
+
+          def patch_file(path, patches):
+              global applied
+              if not os.path.exists(path): return
+              with open(path, "r") as f: c = f.read()
+              orig = c
+              for p, r in patches:
+                  if re.search(p, c):
+                      c = re.sub(p, r, c, count=1)
+                      applied += 1
+              if c != orig:
+                  with open(path, "w") as f: f.write(c)
+
+          # Device patches
+          dev = [
+              (r'(data->HighestShaderModel\s*=\s*)[^;]+;', f'\\1D3D_SHADER_MODEL_{sm};'),
+              (r'(MaxSupportedFeatureLevel\s*=\s*)[^;]+;', f'\\1{fl_map.get(fl, "D3D_FEATURE_LEVEL_12_2")};'),
+              (r'(options1\.WaveOps\s*=\s*)[^;]+;', '\\1TRUE;'),
+              (r'(options1\.WaveLaneCountMin\s*=\s*)[^;]+;', '\\g<1>32;'),
+              (r'(options1\.WaveLaneCountMax\s*=\s*)[^;]+;', '\\g<1>64;'),
+              (r'(options7\.MeshShaderTier\s*=\s*)[^;]+;', '\\1D3D12_MESH_SHADER_TIER_1;'),
+              (r'(options\.ResourceBindingTier\s*=\s*)[^;]+;', '\\1D3D12_RESOURCE_BINDING_TIER_3;'),
+              (r'(options\.TiledResourcesTier\s*=\s*)[^;]+;', '\\1D3D12_TILED_RESOURCES_TIER_3;'),
+              (r'(options\.ResourceHeapTier\s*=\s*)[^;]+;', '\\1D3D12_RESOURCE_HEAP_TIER_2;'),
+              (r'(options5\.RaytracingTier\s*=\s*)[^;]+;', '\\1D3D12_RAYTRACING_TIER_1_0;'),
+              (r'(options6\.VariableShadingRateTier\s*=\s*)[^;]+;', '\\1D3D12_VARIABLE_SHADING_RATE_TIER_2;'),
+              (r'(options12\.EnhancedBarriersSupported\s*=\s*)[^;]+;', '\\1TRUE;'),
+              (r'(options\.DoublePrecisionFloatShaderOps\s*=\s*)[^;]+;', '\\1TRUE;'),
+              (r'(options1\.Int64ShaderOps\s*=\s*)[^;]+;', '\\1TRUE;'),
+              (r'(options4\.Native16BitShaderOpsSupported\s*=\s*)[^;]+;', '\\1TRUE;'),
+              (r'(options2\.DepthBoundsTestSupported\s*=\s*)[^;]+;', '\\1TRUE;'),
+          ]
+          patch_file("libs/vkd3d/device.c", dev)
+
+          # CPU/AVX patches - Fix ILLEGAL_INSTRUCTION
+          cpu = [
+              (r'(__cpuid|cpuid|__cpuidex)\s*\([^)]+\)', '(void)0'),
+              (r'(IsProcessorFeaturePresent\s*\([^)]+\))', 'TRUE'),
+              (r'(_xgetbv\s*\([^)]+\))', '0'),
+              (r'(vkd3d_cpu_supports_sse4_2\s*\(\s*\))', 'true'),
+              (r'(vkd3d_cpu_supports_avx\s*\(\s*\))', 'false'),
+              (r'(vkd3d_cpu_supports_avx2\s*\(\s*\))', 'false'),
+              (r'#define\s+VKD3D_ENABLE_AVX\s+\d+', '#define VKD3D_ENABLE_AVX 0'),
+          ]
+          for f in glob.glob("**/*.c", recursive=True) + glob.glob("**/*.h", recursive=True):
+              patch_file(f, cpu)
+
+          print(f"Applied {applied} patches")
+          PY
+          python3 patch.py
+
+      - name: Build
+        if: steps.check.outputs.SKIP == 'false'
+        run: |
+          cd src
+          export CFLAGS="-O2 -DNDEBUG -mno-avx -mno-avx2 -msse4.2"
+          export CXXFLAGS="-O2 -DNDEBUG -mno-avx -mno-avx2 -msse4.2"
+          bash ./package-release.sh ${{ env.TAG }} ../out --no-package
+
+      - name: Verify
+        if: steps.check.outputs.SKIP == 'false'
+        run: |
+          SRC=$(find out -maxdepth 1 -type d -name "vkd3d-proton-*" | head -1)
+          [[ -z "$SRC" ]] && exit 1
+          for a in x64 x86; do for d in d3d12.dll d3d12core.dll; do [[ ! -f "$SRC/$a/$d" ]] && exit 1; done; done
+          echo "SRC_PATH=$SRC" >> $GITHUB_ENV
+
+      - name: Package
+        if: steps.check.outputs.SKIP == 'false'
+        run: |
+          mkdir -p pkg/system32 pkg/syswow64
+          cp "${{ env.SRC_PATH }}/x64/"*.dll pkg/system32/
+          cp "${{ env.SRC_PATH }}/x86/"*.dll pkg/syswow64/
+          cat > pkg/profile.json << EOF
+          {"type":"VKD3D","versionName":"${{ env.VER }}-Dragon","versionCode":$(date +%Y%m%d),"description":"Dragon SM${{ env.SHADER_MODEL }} FL${{ env.FEATURE_LEVEL }}","files":[{"source":"system32/d3d12.dll","target":"\${system32}/d3d12.dll"},{"source":"system32/d3d12core.dll","target":"\${system32}/d3d12core.dll"},{"source":"syswow64/d3d12.dll","target":"\${syswow64}/d3d12.dll"},{"source":"syswow64/d3d12core.dll","target":"\${syswow64}/d3d12core.dll"}]}
+          EOF
+          PKG="vkd3d-${{ env.VER }}-SM${{ env.SHADER_MODEL }}-FL${{ env.FEATURE_LEVEL }}-Dragon-${{ env.COMMIT }}"
+          cd pkg && tar --zstd -cf "../${PKG}.wcp" . && cd ..
+          echo "PKG=$PKG" >> $GITHUB_ENV
+
+      - name: Upload
+        if: steps.check.outputs.SKIP == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG }}
+          path: ${{ env.PKG }}.wcp
+
+      - name: Release
+        if: steps.check.outputs.SKIP == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}-${{ env.COMMIT }}
+          name: "VKD3D ${{ env.VER }} Dragon (${{ env.COMMIT }})"
+          files: ${{ env.PKG }}.wcp
+          body: "SM${{ env.SHADER_MODEL }} FL${{ env.FEATURE_LEVEL }} - No AVX - ARM/Turnip optimized"
+        env:
+          GH_TOKEN: ${{ github.token }}
