@@ -149,13 +149,12 @@ jobs:
           patch_file("libs/vkd3d/device.c", dev)
 
           cpu = [
-              (r'(__cpuid|cpuid|__cpuidex)\s*\([^)]+\)', '(void)0'),
-              (r'(IsProcessorFeaturePresent\s*\([^)]+\))', 'TRUE'),
-              (r'(_xgetbv\s*\([^)]+\))', '0'),
               (r'(vkd3d_cpu_supports_sse4_2\s*\(\s*\))', 'true'),
-              (r'(vkd3d_cpu_supports_avx\s*\(\s*\))', 'false'),
-              (r'(vkd3d_cpu_supports_avx2\s*\(\s*\))', 'false'),
-              (r'#define\s+VKD3D_ENABLE_AVX\s+\d+', '#define VKD3D_ENABLE_AVX 0'),
+              (r'(vkd3d_cpu_supports_avx\s*\(\s*\))', 'true'),
+              (r'(vkd3d_cpu_supports_avx2\s*\(\s*\))', 'true'),
+              (r'(vkd3d_cpu_supports_fma\s*\(\s*\))', 'true'),
+              (r'#define\s+VKD3D_ENABLE_AVX\s+\d+', '#define VKD3D_ENABLE_AVX 1'),
+              (r'#define\s+VKD3D_ENABLE_FMA\s+\d+', '#define VKD3D_ENABLE_FMA 1'),
           ]
           
           for f in glob.glob("**/*.c", recursive=True) + glob.glob("**/*.h", recursive=True):
@@ -174,7 +173,7 @@ jobs:
         if: steps.check.outputs.SKIP == 'false'
         run: |
           cd src
-          BUILD_FLAGS="-O2 -DNDEBUG -mno-avx -mno-avx2 -msse4.2"
+          BUILD_FLAGS="-O3 -DNDEBUG -mavx -mavx2 -mfma -msse4.2"
           [[ "${{ inputs.BUILD_TYPE }}" == "debug" ]] && BUILD_FLAGS="-O0 -g -DDEBUG"
           
           export CFLAGS="$BUILD_FLAGS"
@@ -231,7 +230,7 @@ jobs:
             "versionName": "${{ env.VER }}",
             "versionCode": ${{ env.BUILD_DATE }},
             "buildId": "${{ env.BUILD_ID }}",
-            "description": "VKD3D Proton optimized build",
+            "description": "VKD3D Proton optimized build with AVX/AVX2/FMA",
             "files": [
               {"source": "system32/d3d12.dll", "target": "\${system32}/d3d12.dll"},
               {"source": "system32/d3d12core.dll", "target": "\${system32}/d3d12core.dll"},
@@ -274,6 +273,7 @@ jobs:
             - Version: ${{ env.VER }}
             - Commit: ${{ env.COMMIT }}
             - Date: ${{ env.BUILD_DATE }}
+            - Optimizations: AVX, AVX2, FMA, SSE4.2, -O3
             
             Source: https://github.com/HansKristian-Work/vkd3d-proton
           draft: false
