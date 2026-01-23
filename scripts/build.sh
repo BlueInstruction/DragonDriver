@@ -238,7 +238,7 @@ configure_and_build() {
         -Dfreedreno-kmds=msm,virtio \
         -Dvulkan-layers=device-select,overlay \
         -Dbuild-aco-tests=true \
-        -Dfreedreno-enable-sparse=true \
+        -Dfreedreno-enable-sparse=false \
         -Dandroid-libbacktrace=disabled \
         -Dcpp_rtti=false
 
