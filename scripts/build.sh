@@ -442,7 +442,7 @@ EOF
 
 run_meson_setup() {
     local variant_name="$1"
-    local log_file="\( BUILD_DIR/meson_ \){variant_name}.log"
+    local log_file="$BUILD_DIR/meson_${variant_name}.log"
 
     log "Running Meson setup for $variant_name..."
     rm -rf build-release
@@ -481,7 +481,7 @@ run_meson_setup() {
 
 run_ninja_build() {
     local variant_name="$1"
-    local log_file="\( BUILD_DIR/ninja_ \){variant_name}.log"
+    local log_file="$BUILD_DIR/ninja_${variant_name}.log"
     local cores=$(nproc 2>/dev/null || echo 4)
 
     log "Building with Ninja ($cores cores)..."
@@ -511,7 +511,7 @@ package_build() {
     patchelf --set-soname "vulkan.adreno.so" libvulkan_freedreno.so
     mv libvulkan_freedreno.so vulkan.adreno.so
 
-    local FILENAME="Turnip-\( {variant_name}- \){MESA_VERSION}-${COMMIT_HASH_SHORT}"
+    local FILENAME="Turnip-${variant_name}-${MESA_VERSION}-${COMMIT_HASH_SHORT}"
 
     cat <<EOF > meta.json
 {
@@ -646,7 +646,7 @@ build_all_variants() {
     done
 
     echo ""
-    info "Build Summary: \( success_count/ \){#variants[@]} successful"
+    info "Build Summary: $success_count/${#variants[@]} successful"
     [ ${#failed[@]} -gt 0 ] && warn "Failed: ${failed[*]}"
 }
 
