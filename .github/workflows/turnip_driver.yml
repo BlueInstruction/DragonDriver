@@ -20,7 +20,7 @@ on:
         default: "a7xx"
         options:
           - a7xx
-          - a8xx
+          - 8gen
         # -
         # -
           
