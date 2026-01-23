@@ -530,7 +530,7 @@ EOF
     zip -9 "${FILENAME}.zip" vulkan.adreno.so meta.json
     rm -f vulkan.adreno.so meta.json
 
-    local size=\( (du -h " \){FILENAME}.zip" | cut -f1)
+    local size=$(du -h "${FILENAME}.zip" | cut -f1)
     success "Created: ${FILENAME}.zip ($size)"
 }
 
