@@ -195,12 +195,7 @@ jobs:
             **Source:** ${{ github.event.inputs.mesa_repo_source || 'freedesktop' }}
             **Variant:** ${{ github.event.inputs.build_variant || 'a7xx' }}
             
-            ### Installation:
-            1. Download the ZIP file
-            2. Extract the driver library (libvulkan.adreno.so)
-            3. Place it in the appropriate directory of your Android emulator
-            4. Configure the emulator to use the Turnip driver
-            
+
             ### Build Details:
             - Android API: ${{ env.API_LEVEL }}
             - NDK: ${{ env.NDK_VERSION }}
