@@ -531,7 +531,7 @@ package_build() {
     cat > "$TEMP_DIR/meta.json" << EOF
 {
     "schemaVersion": 1,
-    "name": "Mesa Turnip Driver",
+    "name": "${DRIVER_NAME}",
     "description": "Mesa ${MESA_VERSION} - Built: ${BUILD_DATE}",
     "author": "Mesa3D",
     "packageVersion": "1",
