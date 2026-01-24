@@ -29,12 +29,12 @@ RETRY_DELAY=15
 BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S')
 
 # LOGGING
-log()     { echo "[Build] $1"; }
+log() { echo "[Build] $1"; }
 success() { echo "[OK] $1"; }
-warn()    { echo "[WARN] $1"; }
-error()   { echo "[ERROR] $1"; exit 1; }
-info()    { echo "[INFO] $1"; }
-header()  { echo -e "\n=== $1 ==="; }
+warn() { echo "[WARN] $1"; }
+error() { echo "[ERROR] $1"; exit 1; }
+info() { echo "[INFO] $1"; }
+header() { echo -e "\n=== $1 ==="; }
 
 # UTILITIES
 retry_command() {
@@ -207,10 +207,6 @@ clone_custom_commit() {
 setup_mesa_repo() {
     cd "$BUILD_DIR/mesa"
     
-    if [ "$MESA_REPO_SOURCE" = "8gen" ]; then
-        apply_8gen_fixes
-    fi
-    
     git config user.name "BuildUser"
     git config user.email "build@system.local"
     
@@ -226,23 +222,6 @@ setup_mesa_repo() {
     success "Mesa ready: $MESA_VERSION ($COMMIT_HASH_SHORT)"
 }
 
-apply_8gen_fixes() {
-    log "Applying 8gen compatibility fixes..."
-    cd "$BUILD_DIR/mesa"
-
-    if [ -f "src/freedreno/common/freedreno_devices.py" ]; then
-        perl -i -p0e 's/(\n\s*a8xx_825)/,$1/s' src/freedreno/common/freedreno_devices.py 2>/dev/null || true
-        sed -i '/REG_A8XX_GRAS_UNKNOWN_/d' src/freedreno/common/freedreno_devices.py 2>/dev/null || true
-    fi
-
-    find src/freedreno/vulkan -name "*.cc" -print0 2>/dev/null | \
-        xargs -0 sed -i 's/ && (pdevice->info->chip != 8)//g' 2>/dev/null || true
-    find src/freedreno/vulkan -name "*.cc" -print0 2>/dev/null | \
-        xargs -0 sed -i 's/ && (pdevice->info->chip == 8)//g' 2>/dev/null || true
-
-    success "8gen fixes applied"
-}
-
 # PREPARE BUILD DIR
 prepare_build_dir() {
     header "Preparing Build Directory"
@@ -256,8 +235,8 @@ prepare_build_dir() {
     success "Build directory ready - Mesa $MESA_VERSION ($COMMIT_HASH_SHORT)"
 }
 
-# PATCH APPLICATION
-apply_patch() {
+# PATCH SYSTEM - IMPROVED
+apply_patch_file() {
     local patch_name="$1"
     local patch_file="$PATCHES_DIR/$patch_name"
     
@@ -269,19 +248,105 @@ apply_patch() {
     log "Applying patch: $patch_name"
     cd "$BUILD_DIR/mesa"
     
-    if git apply "$patch_file" --check 2>/dev/null; then
-        git apply "$patch_file"
-        success "Patch applied: $patch_name"
-        return 0
-    else
-        warn "Patch may not apply cleanly, trying 3-way merge..."
-        if git apply "$patch_file" --3way 2>/dev/null; then
-            success "Patch applied with 3-way merge: $patch_name"
-            return 0
-        else
-            warn "Failed to apply patch: $patch_name"
-            return 1
+    # Backup original files mentioned in patch
+    local files_in_patch=$(grep -E '^--- a/' "$patch_file" | sed 's/^--- a\///' | head -5)
+    for file in $files_in_patch; do
+        if [ -f "$file" ]; then
+            cp "$file" "$file.backup" 2>/dev/null || true
         fi
+    done
+    
+    # Try to apply patch
+    if git apply --check "$patch_file" 2>/dev/null; then
+        if git apply "$patch_file"; then
+            success "Patch applied successfully: $patch_name"
+            return 0
+        fi
+    fi
+    
+    # Try with 3-way merge
+    warn "Standard patch failed, trying 3-way merge..."
+    if git apply --3way "$patch_file" 2>/dev/null; then
+        success "Patch applied with 3-way merge: $patch_name"
+        return 0
+    fi
+    
+    # Try manual patching as last resort
+    warn "Git apply failed, attempting manual patch..."
+    
+    # Extract patch content and apply manually
+    local patch_content=$(cat "$patch_file")
+    
+    # Simple sed-based patching for common changes
+    if echo "$patch_content" | grep -q "tu_bo_init_new_cached"; then
+        find src/freedreno/vulkan -name "*.cc" -exec sed -i 's/tu_bo_init_new_cached/tu_bo_init_new/g' {} \; 2>/dev/null || true
+        success "Applied memory optimization manually"
+        return 0
+    fi
+    
+    warn "Patch failed: $patch_name"
+    return 1
+}
+
+# DIRECT CODE MODIFICATIONS - RELIABLE
+apply_direct_modifications() {
+    header "Applying Direct Modifications"
+    
+    cd "$BUILD_DIR/mesa"
+    
+    # 1. Memory optimization
+    log "Applying memory optimization..."
+    if [ -f "src/freedreno/vulkan/tu_query.cc" ]; then
+        sed -i 's/tu_bo_init_new_cached/tu_bo_init_new/g' src/freedreno/vulkan/tu_query.cc
+        success "Memory optimization applied to tu_query.cc"
+    fi
+    
+    if [ -f "src/freedreno/vulkan/tu_device.cc" ]; then
+        sed -i 's/has_cached_coherent_memory = true/has_cached_coherent_memory = false/g' src/freedreno/vulkan/tu_device.cc
+        success "Memory optimization applied to tu_device.cc"
+    fi
+    
+    # 2. Sysmem rendering preference
+    log "Applying sysmem rendering preference..."
+    local tu_device_file="src/freedreno/vulkan/tu_device.cc"
+    if [ -f "$tu_device_file" ]; then
+        # First, check if the line exists and modify it
+        if grep -q "use_bypass = false" "$tu_device_file"; then
+            sed -i 's/use_bypass = false/use_bypass = true/g' "$tu_device_file"
+            success "Sysmem rendering enabled"
+        else
+            # Add the modification if line doesn't exist
+            sed -i '/bool use_bypass = false/!b;n;s/false/true/' "$tu_device_file" 2>/dev/null || true
+        fi
+    fi
+    
+    # 3. Library name modification for compatibility
+    log "Preparing library name..."
+    if [ -f "src/freedreno/vulkan/meson.build" ]; then
+        sed -i 's/libvulkan_freedreno/libvulkan.adreno/g' src/freedreno/vulkan/meson.build 2>/dev/null || true
+    fi
+    
+    success "Direct modifications applied"
+}
+
+# 8GEN SPECIFIC FIXES
+apply_8gen_fixes() {
+    if [ "$MESA_REPO_SOURCE" = "8gen" ]; then
+        log "Applying 8gen-specific fixes..."
+        cd "$BUILD_DIR/mesa"
+        
+        # Fix device registration
+        if [ -f "src/freedreno/common/freedreno_devices.py" ]; then
+            # Fix a8xx_825 registration
+            sed -i '/a8xx_825 =/d' src/freedreno/common/freedreno_devices.py 2>/dev/null || true
+            echo "    a8xx_825 = AdrenoInfo('a8xx_825', 'Adreno 8xx', 8, 825)," >> src/freedreno/common/freedreno_devices.py 2>/dev/null || true
+        fi
+        
+        # Remove chip checks that might cause issues
+        find src/freedreno/vulkan -name "*.cc" -exec sed -i 's/ && (pdevice->info->chip != 8)//g' {} \; 2>/dev/null || true
+        find src/freedreno/vulkan -name "*.cc" -exec sed -i 's/ && (pdevice->info->chip == 8)//g' {} \; 2>/dev/null || true
+        
+        success "8gen fixes applied"
     fi
 }
 
@@ -329,33 +394,35 @@ run_meson_setup() {
     log "Running Meson setup for $variant_name..."
     rm -rf build-release
 
-    if ! meson setup build-release \
-        --cross-file "$BUILD_DIR/cross_build" \
-        --native-file "$BUILD_DIR/native_build" \
-        -Dbuildtype=release \
-        -Dplatforms=android \
-        -Dplatform-sdk-version=$API_LEVEL \
-        -Dandroid-stub=true \
-        -Dgallium-drivers= \
-        -Dvulkan-drivers=freedreno \
-        -Dvulkan-beta=true \
-        -Dvulkan-layers=device-select,overlay \
-        -Dfreedreno-kmds=kgsl \
-        -Db_lto=true \
-        -Db_ndebug=true \
-        -Dcpp_rtti=false \
-        -Degl=disabled \
-        -Dgbm=disabled \
-        -Dglx=disabled \
-        -Dopengl=false \
-        -Dllvm=disabled \
-        -Dlibunwind=disabled \
-        -Dzstd=disabled \
-        -Dwerror=false \
-        -Dvalgrind=disabled \
-        -Dbuild-tests=false \
-        &> "$log_file"; then
+    # Prepare build options
+    local build_options=(
+        "--cross-file" "$BUILD_DIR/cross_build"
+        "--native-file" "$BUILD_DIR/native_build"
+        "-Dbuildtype=release"
+        "-Dplatforms=android"
+        "-Dplatform-sdk-version=$API_LEVEL"
+        "-Dandroid-stub=true"
+        "-Dgallium-drivers="
+        "-Dvulkan-drivers=freedreno"
+        "-Dvulkan-beta=true"
+        "-Dvulkan-layers=device-select,overlay"
+        "-Dfreedreno-kmds=kgsl"
+        "-Db_lto=true"
+        "-Db_ndebug=true"
+        "-Dcpp_rtti=false"
+        "-Degl=disabled"
+        "-Dgbm=disabled"
+        "-Dglx=disabled"
+        "-Dopengl=false"
+        "-Dllvm=disabled"
+        "-Dlibunwind=disabled"
+        "-Dzstd=disabled"
+        "-Dwerror=false"
+        "-Dvalgrind=disabled"
+        "-Dbuild-tests=false"
+    )
 
+    if ! meson setup build-release "${build_options[@]}" &> "$log_file"; then
         error "Meson setup failed. Check: $log_file"
     fi
 
@@ -369,11 +436,16 @@ run_ninja_build() {
 
     log "Building with Ninja ($cores cores)..."
 
+    # First, try to build only the driver
     if ! ninja -C build-release -j"$cores" src/freedreno/vulkan/libvulkan_freedreno.so &> "$log_file"; then
-        echo ""
-        warn "Build failed. Last 50 lines:"
-        tail -50 "$log_file"
-        error "Ninja build failed for $variant_name"
+        # If that fails, try building everything
+        warn "Driver-only build failed, trying full build..."
+        if ! ninja -C build-release -j"$cores" &> "$log_file"; then
+            echo ""
+            warn "Build failed. Last 50 lines:"
+            tail -50 "$log_file"
+            error "Ninja build failed for $variant_name"
+        fi
     fi
 
     success "Build complete"
@@ -384,22 +456,19 @@ extract_vulkan_version() {
     
     local vulkan_version="1.3.250"
     
-    if [ -f "src/vulkan/util/vk_common.h" ]; then
-        local vk_header_version=$(grep -o 'VK_HEADER_VERSION [0-9]*' src/vulkan/util/vk_common.h 2>/dev/null | head -1 | awk '{print $2}')
-        if [ -n "$vk_header_version" ]; then
-            local major=$((vk_header_version / 1000000))
-            local minor=$(((vk_header_version % 1000000) / 1000))
-            local patch=$((vk_header_version % 1000))
-            vulkan_version="$major.$minor.$patch"
+    # Try multiple locations for Vulkan version
+    for file in "src/vulkan/util/vk_common.h" "include/vulkan/vulkan_core.h" "include/vulkan/vulkan.h"; do
+        if [ -f "$file" ]; then
+            local vk_header=$(grep -o 'VK_HEADER_VERSION [0-9]*' "$file" 2>/dev/null | head -1 | awk '{print $2}')
+            if [ -n "$vk_header" ]; then
+                local major=$((vk_header / 1000000))
+                local minor=$(((vk_header % 1000000) / 1000))
+                local patch=$((vk_header % 1000))
+                vulkan_version="$major.$minor.$patch"
+                break
+            fi
         fi
-    elif [ -f "include/vulkan/vulkan_core.h" ]; then
-        local vk_major=$(grep -o '#define VK_VERSION_MAJOR.*' include/vulkan/vulkan_core.h 2>/dev/null | head -1 | awk '{print $3}')
-        local vk_minor=$(grep -o '#define VK_VERSION_MINOR.*' include/vulkan/vulkan_core.h 2>/dev/null | head -1 | awk '{print $3}')
-        local vk_patch=$(grep -o '#define VK_VERSION_PATCH.*' include/vulkan/vulkan_core.h 2>/dev/null | head -1 | awk '{print $3}')
-        if [ -n "$vk_major" ] && [ -n "$vk_minor" ]; then
-            vulkan_version="$vk_major.$vk_minor.${vk_patch:-0}"
-        fi
-    fi
+    done
     
     echo "$vulkan_version"
 }
@@ -422,11 +491,7 @@ generate_filename() {
     
     case "$naming_format" in
         "emulator")
-            if [ "$variant_name" = "gen8" ]; then
-                echo "Turnip-Gen8-${clean_version}"
-            else
-                echo "Turnip-${clean_version}"
-            fi
+            echo "Turnip-${clean_version}"
             ;;
         "simple")
             if [ "$variant_name" = "gen8" ]; then
@@ -437,14 +502,10 @@ generate_filename() {
             ;;
         "detailed")
             local date_part=$(date +'%Y%m%d')
-            if [ "$variant_name" = "gen8" ]; then
-                echo "Turnip-Gen8-Mesa${clean_version}-${date_part}"
-            else
-                echo "Turnip-A7xx-Mesa${clean_version}-${date_part}"
-            fi
+            echo "Turnip-${variant_name}-Mesa${clean_version}-${date_part}"
             ;;
         *)
-            echo "turnip-${variant_name}-${clean_version}-${commit_short}"
+            echo "turnip-${variant_name}-${clean_version}"
             ;;
     esac
 }
@@ -464,12 +525,17 @@ package_build() {
     rm -rf "$TEMP_DIR"
     mkdir -p "$TEMP_DIR"
 
-    cp "mesa/$SO_FILE" "$TEMP_DIR/libvulkan.adreno.so"
+    # Copy and rename the library
+    cp "$SO_FILE" "$TEMP_DIR/libvulkan.adreno.so"
+    
+    # Set proper soname
+    patchelf --set-soname "libvulkan.adreno.so" "$TEMP_DIR/libvulkan.adreno.so" 2>/dev/null || true
     
     local VULKAN_VERSION=$(extract_vulkan_version)
     
     local DRIVER_NAME=$(generate_filename "$variant_name" "$MESA_VERSION" "$COMMIT_HASH_SHORT" "$NAMING_FORMAT")
     
+    # Create meta.json with proper format
     cat <<EOF > "$TEMP_DIR/meta.json"
 {
     "schemaVersion": 1,
@@ -484,28 +550,29 @@ package_build() {
 }
 EOF
 
+    # Create build info
     cat <<EOF > "$TEMP_DIR/build_info.txt"
+Build Information:
+-----------------
 Build Date: ${BUILD_DATE}
 Mesa Version: ${MESA_VERSION}
 Vulkan Version: ${VULKAN_VERSION}
-Commit Hash: ${COMMIT_HASH_SHORT}
-Source Repository: ${MESA_REPO_SOURCE}
-Source Type: ${MESA_SOURCE_TYPE}
-Build Variant: ${variant_name}
+Commit: ${COMMIT_HASH_SHORT}
+Source: ${MESA_REPO_SOURCE}
+Variant: ${variant_name}
 Android API: ${API_LEVEL}
-NDK Version: ${NDK_VERSION}
 EOF
 
+    # Create ZIP
     cd "$TEMP_DIR"
     zip -9 "../${DRIVER_NAME}.zip" *
     cd ..
     
+    # Cleanup
     rm -rf "$TEMP_DIR"
     
     local size=$(du -h "${DRIVER_NAME}.zip" | cut -f1)
-    success "Created driver: ${DRIVER_NAME}.zip ($size)"
-    info "Driver name: $DRIVER_NAME"
-    info "Vulkan Version: ${VULKAN_VERSION}"
+    success "Created driver package: ${DRIVER_NAME}.zip ($size)"
 }
 
 perform_build() {
@@ -531,10 +598,17 @@ build_a7xx() {
     header "A7XX Build"
     reset_mesa
     
-    # Apply patches
-    apply_patch "memory_optimization.patch"
-    apply_patch "sysmem_rendering.patch"
-    apply_patch "compatibility_fixes.patch"
+    # Apply direct modifications (reliable)
+    apply_direct_modifications
+    
+    # Try to apply patches if they exist
+    if [ -f "$PATCHES_DIR/memory_optimization.patch" ]; then
+        apply_patch_file "memory_optimization.patch"
+    fi
+    
+    if [ -f "$PATCHES_DIR/sysmem_rendering.patch" ]; then
+        apply_patch_file "sysmem_rendering.patch"
+    fi
     
     perform_build "a7xx"
 }
@@ -543,21 +617,21 @@ build_gen8() {
     header "Gen8 Build"
     reset_mesa
     
-    # Apply patches
-    apply_patch "sysmem_rendering.patch"
-    apply_patch "compatibility_fixes.patch"
+    # Apply 8gen fixes first
+    apply_8gen_fixes
     
-    perform_build "Gen8"
+    # Apply direct modifications
+    apply_direct_modifications
+    
+    perform_build "gen8"
 }
 
 main() {
     echo ""
     info "Turnip Driver Build System"
-    echo "--------------------------"
     info "Build Variant: $BUILD_VARIANT"
     info "Mesa Source: $MESA_REPO_SOURCE"
     info "Source Type: $MESA_SOURCE_TYPE"
-    info "Build Date: $BUILD_DATE"
     echo ""
 
     check_dependencies
