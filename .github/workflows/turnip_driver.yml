@@ -95,26 +95,28 @@ jobs:
           
           echo "version=$(cat build/version.txt)" >> $GITHUB_OUTPUT
           echo "filename=$(cat build/filename.txt)" >> $GITHUB_OUTPUT
+          echo "vulkan_version=$(cat build/vulkan_version.txt)" >> $GITHUB_OUTPUT
+          echo "build_date=$(cat build/build_date.txt)" >> $GITHUB_OUTPUT
 
       - name: upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: turnip-${{ steps.build.outputs.version }}
+          name: ${{ steps.build.outputs.filename }}
           path: build/*.zip
           retention-days: 30
 
       - name: create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: turnip-${{ steps.build.outputs.version }}
-          name: "Turnip ${{ steps.build.outputs.version }}"
+          tag_name: ${{ steps.build.outputs.filename }}
+          name: ${{ steps.build.outputs.filename }}
           body: |
-            ## Turnip Driver
+            ## Mesa Turnip Driver
             
             **Mesa Version:** ${{ steps.build.outputs.version }}
-            **Build Date:** $(date +'%Y-%m-%d')
+            **Vulkan Version:** ${{ steps.build.outputs.vulkan_version }}
+            **Build Date:** ${{ steps.build.outputs.build_date }}
             **Android API:** ${{ env.API_LEVEL }}
-            
           files: build/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
