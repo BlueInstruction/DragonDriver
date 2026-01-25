@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="${SCRIPT_DIR}/../build"
+BUILD_DIR="${GITHUB_WORKSPACE}/build"
 MESA_DIR="${BUILD_DIR}/mesa"
 
 MESA_REPO="https://gitlab.freedesktop.org/mesa/mesa.git"
