@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-#
-# Turnip Driver Builder
-# Mesa Turnip build script for Android
-#
+
 
 set -euo pipefail
 
