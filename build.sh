@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-#
 # Turnip Driver Builder
 # Mesa Turnip Driver for Android
-#
 
 set -euo pipefail
 
@@ -228,7 +226,7 @@ package_driver() {
     
     local driver_src="${MESA_DIR}/build/src/freedreno/vulkan/libvulkan_freedreno.so"
     local package_dir="${BUILD_DIR}/package"
-    local driver_name="vulkan.ad07XX.so"
+    local driver_name="vulkan.ad07xx.so"
     
     mkdir -p "$package_dir"
     cp "$driver_src" "${package_dir}/${driver_name}"
@@ -244,12 +242,12 @@ package_driver() {
 {
     "schemaVersion": 1,
     "name": "Turnip ${version}",
-    "description": "Mesa ${version} (${commit}) - Turnip Vulkan driver for Adreno GPUs",
+    "description": "Mesa ${version} (${commit}) - Turnip driver for Adreno GPUs",
     "author": "Mesa3D",
     "packageVersion": "1",
     "vendor": "Mesa3D",
     "driverVersion": "${version}",
-    "minApi": 27,
+    "minApi": 28,
     "libraryName": "${driver_name}"
 }
 EOF
