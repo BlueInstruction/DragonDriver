@@ -35,7 +35,7 @@ jobs:
       - name: check version
         id: check
         env:
-          gh_token: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           upstream="hanskristian-work/vkd3d-proton"
 
@@ -64,17 +64,17 @@ jobs:
 
           commit_short="${commit:0:8}"
 
-          echo "version=$ver_clean" >> $github_output
-          echo "commit=$commit_short" >> $github_output
+          echo "version=$ver_clean" >> $GITHUB_OUTPUT
+          echo "commit=$commit_short" >> $GITHUB_OUTPUT
 
           release_tag="v${ver_clean}-${commit_short}"
           exists=$(gh release view "$release_tag" --repo ${{ github.repository }} 2>/dev/null && echo "true" || echo "false")
 
           if [[ "${{ inputs.force }}" == "true" ]] || [[ "$exists" == "false" ]]; then
-            echo "should_build=true" >> $github_output
+            echo "should_build=true" >> $GITHUB_OUTPUT
             echo "will build ${ver_clean} (${commit_short})"
           else
-            echo "should_build=false" >> $github_output
+            echo "should_build=false" >> $GITHUB_OUTPUT
             echo "release ${release_tag} already exists, skipping"
           fi
 
@@ -136,8 +136,8 @@ jobs:
             [[ -f "artifacts/arm64ec/checksums.txt" ]] && cp "artifacts/arm64ec/checksums.txt" "release/checksums-arm64ec.txt"
           fi
 
-          echo "version=$version" >> $github_output
-          echo "commit=$commit" >> $github_output
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "commit=$commit" >> $GITHUB_OUTPUT
 
           echo "release files:"
           ls -la release/
@@ -152,9 +152,19 @@ jobs:
             ## vkd3d-proton ${{ steps.prep.outputs.version }}
 
             **commit:** `${{ steps.prep.outputs.commit }}`
-            **source:** [vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton)
+            **source:** [vkd3d-proton](https://github.com/hanskristian-work/vkd3d-proton)
 
+            ### downloads
+            - `vkd3d-proton-*.wcp` - x86_64 build (box64)
+            - `vkd3d-proton-arm64ec-*.wcp` - arm64ec build (fexcore)
+
+            ### features
+            - directx 12 feature level 12_2
+            - shader model 6.6
+            - raytracing tier 1.0
+            - mesh shader tier 1
+            - variable rate shading tier 2
           draft: false
           prerelease: false
         env:
-          gh_token: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
