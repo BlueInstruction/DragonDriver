@@ -236,13 +236,13 @@ package_driver() {
     commit=$(cat "${BUILD_DIR}/commit.txt")
     vulkan_version=$(get_vulkan_version)
     
-    # تحديد نوع البناء (devel للفروع، بدون شيء للإصدارات)
+    
     local version_suffix=""
     if [[ "$MESA_SOURCE" == "main_branch" || "$MESA_SOURCE" == "staging_branch" ]]; then
         version_suffix="-devel"
     fi
     
-    # تاريخ البناء
+    
     local build_date
     build_date=$(date +'%b-%d-%Y' | tr '[:upper:]' '[:lower:]')
     
@@ -260,7 +260,7 @@ package_driver() {
     local driver_size
     driver_size=$(du -h "${package_dir}/${driver_name}" | cut -f1)
     
-    # اسم الملف: turnip_v25.3.4-jan-25-2026.zip أو turnip_v26.0.0-devel-jan-25-2026.zip
+
     local filename="turnip_v${version}${version_suffix}-${build_date}"
     
     cat > "${package_dir}/meta.json" << EOF
@@ -272,7 +272,7 @@ package_driver() {
     "packageVersion": "1",
     "vendor": "Mesa3D",
     "driverVersion": "Vulkan ${vulkan_version}",
-    "minApi": 27,
+    "minApi": 28,
     "libraryName": "${driver_name}"
 }
 EOF
