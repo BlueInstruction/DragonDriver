@@ -43,8 +43,8 @@ if [[ "$ARCH" == "x86_64" ]]; then
     cp "$SRC_PATH/x86/"*.dll "$PKG_DIR/syswow64/"
 else
     for dll in d3d12.dll d3d12core.dll; do
-        arm64_dll=$(find "$PROJECT_ROOT/src/build-arm64ec" -name "$dll" -type f | head -1)
-        i686_dll=$(find "$PROJECT_ROOT/src/build-i686" -name "$dll" -type f | head -1)
+        arm64_dll=$(find "$PROJECT_ROOT/src/build-arm64ec" -name "$dll" -type f 2>/dev/null | head -1)
+        i686_dll=$(find "$PROJECT_ROOT/src/build-i686" -name "$dll" -type f 2>/dev/null | head -1)
         [[ -n "$arm64_dll" ]] && cp "$arm64_dll" "$PKG_DIR/system32/"
         [[ -n "$i686_dll" ]] && cp "$i686_dll" "$PKG_DIR/syswow64/"
     done
@@ -64,8 +64,6 @@ cat > profile.json << EOF
   "type": "VKD3D",
   "versionName": "${VERSION_CLEAN}-${COMMIT}-experimental",
   "versionCode": $(date +%Y%m%d),
-  "buildId": "${COMMIT}",
-  "arch": "${ARCH_DESC}",
   "description": "vkd3d-proton ${VERSION_CLEAN} experimental build",
   "files": [
     {"source": "system32/d3d12.dll", "target": "\${system32}/d3d12.dll"},
