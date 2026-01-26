@@ -83,7 +83,7 @@ jobs:
       - name: build turnip
         id: build
         run: |
-          chmod +x build.sh
+          chmod +x turnip-driver.sh
           export MESA_SOURCE="${{ inputs.mesa_source || 'latest_release' }}"
           export STAGING_BRANCH="${{ inputs.staging_branch || 'staging/25.3' }}"
           export CUSTOM_TAG="${{ inputs.custom_tag || '' }}"
@@ -91,7 +91,7 @@ jobs:
           export NDK_PATH="/opt/android-ndk"
           export API_LEVEL="${{ env.API_LEVEL }}"
           
-          bash build.sh
+          bash turnip-driver.sh
           
           echo "version=$(cat build/version.txt)" >> $GITHUB_OUTPUT
           echo "filename=$(cat build/filename.txt)" >> $GITHUB_OUTPUT
