@@ -49,8 +49,11 @@ clone_source() {
 }
 
 apply_patches() {
-    log "applying performance patches"
-    if ! python3 "$PROJECT_ROOT/patches/performance.py" "$SRC_DIR" --arch "$ARCH" --report; then
+    log "applying performance patches (profile: ${PROFILE:-ue5})"
+    if ! python3 "$PROJECT_ROOT/patches/performance.py" "$SRC_DIR" \
+        --arch "$ARCH" \
+        --profile "${PROFILE:-ue5}" \
+        --report; then
         error "patch application failed"
     fi
     log "patches applied successfully"
