@@ -268,11 +268,11 @@ package_driver() {
     "schemaVersion": 1,
     "name": "turnip_v${version}${version_suffix}-${build_date}",
     "description": "Compiled from Mesa ${version} (${commit})",
-    "author": "Blue",
+    "author": "Mesa3D",
     "packageVersion": "1",
     "vendor": "Mesa3D",
     "driverVersion": "Vulkan ${vulkan_version}",
-    "minApi": 28,
+    "minApi": 27,
     "libraryName": "${driver_name}"
 }
 EOF
