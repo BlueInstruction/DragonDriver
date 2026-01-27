@@ -65,7 +65,7 @@ verify_pkg() {
             log "OK:$f ($(stat -c%s "$PD/$f"))"
         else
             log "MISS:$f"
-            ((e++))
+            e=$((e + 1))
         fi
     done
     [[ $e -gt 0 ]] && err "Verify failed:$e"
@@ -81,7 +81,10 @@ archive() {
 }
 
 copy_report() {
-    [[ -f "$PR/patch-report.json" ]] && cp "$PR/patch-report.json" "$PD/" && log "Report included"
+    if [[ -f "$PR/patch-report.json" ]]; then
+        cp "$PR/patch-report.json" "$PD/"
+        log "Report included"
+    fi
 }
 
 export_env() {
