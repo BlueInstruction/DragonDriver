@@ -248,28 +248,28 @@ jobs:
             patch-report.json
           retention-days: 30
 
-      - name: Release
-        if: steps.check.outputs.skip == 'false'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.check.outputs.release_tag }}-${{ env.COMMIT }}
-          name: V3X ${{ steps.version.outputs.VER }} D3MU
-          files: |
-            ${{ env.PKG }}.wcp
-            patch-report.json
-          body: |
+#      - name: Release
+#        if: steps.check.outputs.skip == 'false'
+#        uses: softprops/action-gh-release@v2
+#        with:
+#          tag_name: ${{ steps.check.outputs.release_tag }}-${{ env.COMMIT }}
+#          name: V3X ${{ steps.version.outputs.VER }} D3MU
+#          files: |
+#            ${{ env.PKG }}.wcp
+#            patch-report.json
+#          body: |
             ## V3X ${{ steps.version.outputs.VER }} - D3MU
             
-            **Build:** `${{ env.COMMIT }}`
-            **Profile:** ${{ inputs.profile || 'p7' }}
-            **GPU:** `0x1002:0x163f`
+#            **Build:** `${{ env.COMMIT }}`
+#            **Profile:** ${{ inputs.profile || 'p7' }}
+#            **GPU:** `0x1002:0x163f`
             
-            [Source](https://github.com/HansKristian-Work/vkd3d-proton)
+#            [Source](https://github.com/HansKristian-Work/vkd3d-proton)
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ github.token }}
-
+          
       - name: Cleanup
         if: always()
         run: rm -rf src out pkg patcher.py
