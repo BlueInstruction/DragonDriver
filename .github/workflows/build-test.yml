@@ -278,28 +278,28 @@ jobs:
           retention-days: 30
           compression-level: 9
 
-      - name: Create Release
-        if: steps.check.outputs.SKIP == 'false'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}-${{ env.COMMIT }}-d3mu
-          name: "VKD3D Proton ${{ env.VER }} D3MU (${{ env.COMMIT }})"
-          files: |
-            ${{ env.PKG }}.wcp
-            checksums.txt
-            patch-report.json
-          body: |
+#      - name: Create Release
+#        if: steps.check.outputs.SKIP == 'false'
+#        uses: softprops/action-gh-release@v2
+#       with:
+#          tag_name: ${{ env.RELEASE_TAG }}-${{ env.COMMIT }}-d3mu
+#          name: "VKD3D Proton ${{ env.VER }} D3MU (${{ env.COMMIT }})"
+#          files: |
+#            ${{ env.PKG }}.wcp
+#            checksums.txt
+#            patch-report.json
+#          body: |
             ## VKD3D Proton ${{ env.VER }} - D3MU
             
-            **Build:** `${{ env.COMMIT }}`
-            **Date:** ${{ env.BUILD_DATE }}
-            **GPU:** `0x1002:0x163f`
+#            **Build:** `${{ env.COMMIT }}`
+#            **Date:** ${{ env.BUILD_DATE }}
+#            **GPU:** `0x1002:0x163f`
             
-            [Source](https://github.com/HansKristian-Work/vkd3d-proton)
-          draft: false
-          prerelease: false
-        env:
-          GH_TOKEN: ${{ github.token }}
+#            [Source](https://github.com/HansKristian-Work/vkd3d-proton)
+#          draft: false
+#          prerelease: false
+#        env:
+#          GH_TOKEN: ${{ github.token }}
 
       - name: Cleanup
         if: always()
