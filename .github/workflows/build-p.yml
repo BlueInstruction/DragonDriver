@@ -1,0 +1,152 @@
+name: Build Proton 10.4 ARM64EC
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref (commit/tag) to build'
+        required: true
+        default: 'master'
+      version_name:
+        description: 'Version name for the build'
+        required: true
+        default: '10.4-arm64ec'
+
+jobs:
+  build-arm64ec:
+    runs-on: ubuntu-latest
+    
+    env:
+      UNI_KIND: "proton-10"
+      REL_TAG_STABLE: "10.4"
+      PATCH_DIR: "./patches"
+      OUT_DIR: "./out"
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+    
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          .venv
+        key: ${{ runner.os }}-build-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-build-
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          ninja-build \
+          python3 \
+          python3-venv \
+          python3-pip \
+          xz-utils \
+          build-essential \
+          gcc-mingw-w64 \
+          g++-mingw-w64 \
+          patch \
+          git
+    
+    - name: Setup Python environment
+      run: |
+        python3 -m venv .venv
+        source .venv/bin/activate
+        pip install --upgrade pip setuptools wheel
+        pip install meson ninja
+        
+      
+        echo "Python: $(python --version)"
+        echo "Meson: $(meson --version)"
+        echo "Ninja: $(ninja --version)"
+    
+    - name: Prepare build directories
+      run: |
+        mkdir -p "$PATCH_DIR" "$OUT_DIR"
+        ls -la
+    
+    - name: Verify toolchain files
+      run: |
+        
+        if [ ! -f "build-win32.txt" ]; then
+          echo "::error::build-win32.txt not found"
+          exit 1
+        fi
+        
+        if [ ! -f "toolchains/arm64ec.meson.ini" ]; then
+          echo "::error::toolchains/arm64ec.meson.ini not found"
+          exit 1
+        fi
+        
+        echo "::notice::All toolchain files found"
+    
+    - name: Build Proton ARM64EC
+      run: |
+        source .venv/bin/activate
+        chmod +x ./scripts/build-proton-arm64ec.sh
+        
+        # workflow_dispatch
+        REF="${{ github.event.inputs.ref || 'master' }}"
+        VERSION="${{ github.event.inputs.version_name || '10.4-arm64ec' }}"
+        FILENAME="proton-${REL_TAG_STABLE}-arm64ec.wcp.xz"
+        
+        echo "Building with:"
+        echo "  REF: $REF"
+        echo "  VERSION: $VERSION"
+        echo "  OUTPUT: $FILENAME"
+        
+        ./scripts/build-proton-arm64ec.sh "$REF" "$VERSION" "$FILENAME"
+    
+    - name: Verify build output
+      run: |
+        if [ ! -f "$OUT_DIR/proton-${REL_TAG_STABLE}-arm64ec.wcp.xz" ]; then
+          echo "::error::Build artifact not found"
+          exit 1
+        fi
+        
+        echo "::notice::Build artifact size: $(du -h $OUT_DIR/*.wcp.xz | cut -f1)"
+        
+        # checksum
+        if [ -f "$OUT_DIR"/*.sha256 ]; then
+          echo "::notice::SHA256: $(cat $OUT_DIR/*.sha256)"
+        fi
+    
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: proton-${{ env.REL_TAG_STABLE }}-arm64ec
+        path: |
+          ./out/*.wcp.xz
+          ./out/*.sha256
+        if-no-files-found: error
+        retention-days: 30
+    
+    - name: Upload build logs (on failure)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          build_x86/meson-logs/
+          build_ec/meson-logs/
+        if-no-files-found: ignore
+        retention-days: 7
+    
+    - name: Create Release (optional)
+      if: github.event.inputs.ref != 'master'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ github.event.inputs.version_name }}
+        name: Proton ${{ github.event.inputs.version_name }}
+        draft: true
+        files: |
+          ./out/*.wcp.xz
+          ./out/*.sha256
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
